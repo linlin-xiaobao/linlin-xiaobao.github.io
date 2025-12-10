@@ -1,0 +1,45 @@
+/* Global Layout - Critical for preventing black screen */
+html, body, #root { 
+  width: 100%; 
+  height: 100%; 
+  margin: 0; 
+  padding: 0;
+  overflow: hidden; 
+  background-color: #0f1923; /* Valorant Dark Blue */
+  user-select: none; 
+  -webkit-user-select: none;
+}
+
+#canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+#ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
+.pointer-events-auto { pointer-events: auto; }
+
+/* Valorant Font Simulation */
+.font-val { font-family: 'Teko', sans-serif; }
+
+/* Tracking Canvas Scanline effect */
+canvas.tracking-scanline {
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+  background-size: 100% 2px, 3px 100%;
+}
+
+/* Custom animations */
+@keyframes glitch {
+  0% { transform: translate(0); }
+  20% { transform: translate(-2px, 2px); }
+  40% { transform: translate(-2px, -2px); }
+  60% { transform: translate(2px, 2px); }
+  80% { transform: translate(2px, -2px); }
+  100% { transform: translate(0); }
+}
+.animate-glitch {
+  animation: glitch 0.3s cubic-bezier(.25, .46, .45, .94) both infinite;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translate(-50%, -40%); }
+  to { opacity: 1; transform: translate(-50%, -50%); }
+}
+.animate-fade-in {
+  animation: fade-in 0.5s ease-out forwards;
+}

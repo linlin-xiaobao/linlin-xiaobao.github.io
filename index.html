@@ -5,45 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
     <title>无畏契约：小琳特供版</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="./index.css" />
     <style>
-      /* CRITICAL FIX: Ensure full height for app container */
-      html, body, #root { 
-        width: 100%; 
-        height: 100%; 
-        margin: 0; 
-        padding: 0;
-        overflow: hidden; 
-        background-color: #0f1923; 
-        user-select: none; 
-        -webkit-user-select: none;
-      }
-      
-      #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
-      #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
-      .pointer-events-auto { pointer-events: auto; }
-      
-      /* Valorant Font Simulation */
+      /* Fallback for Google Fonts */
       @import url('https://fonts.googleapis.com/css2?family=Teko:wght@300;400;500;600;700&display=swap');
-      .font-val { font-family: 'Teko', sans-serif; }
-      
-      /* Tracking Canvas Scanline effect */
-      canvas.tracking-scanline {
-        background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
-        background-size: 100% 2px, 3px 100%;
-      }
-
-      /* Custom animations */
-      @keyframes glitch {
-        0% { transform: translate(0); }
-        20% { transform: translate(-2px, 2px); }
-        40% { transform: translate(-2px, -2px); }
-        60% { transform: translate(2px, 2px); }
-        80% { transform: translate(2px, -2px); }
-        100% { transform: translate(0); }
-      }
-      .animate-glitch {
-        animation: glitch 0.3s cubic-bezier(.25, .46, .45, .94) both infinite;
-      }
     </style>
     <!-- Preload Three.js -->
     <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
@@ -65,6 +30,7 @@
 </head>
   <body>
     <div id="root"></div>
+    <script type="module" src="./index.tsx"></script>
   <script type="module" src="/index.tsx"></script>
 </body>
 </html>
