@@ -78,6 +78,19 @@
             osc.frequency.exponentialRampToValueAtTime(2000, now + 0.05);
             gain.gain.setValueAtTime(0.5, now);
             gain.gain.linearRampToValueAtTime(0, now + 0.1);
+            
+            // Crunch
+            const osc2 = ctx.createOscillator();
+            const gain2 = ctx.createGain();
+            osc2.type = 'square';
+            osc2.frequency.setValueAtTime(100, now);
+            osc2.connect(gain2);
+            gain2.connect(ctx.destination);
+            gain2.gain.setValueAtTime(0.2, now);
+            gain2.gain.linearRampToValueAtTime(0, now + 0.05);
+            osc2.start(now);
+            osc2.stop(now + 0.05);
+            
             osc.start(now);
             osc.stop(now + 0.1);
             break;
@@ -126,7 +139,10 @@
         const lastShotTimeRef = useRef(0);
         const latestLandmarksRef = useRef(null);
         const handsRef = useRef(null);
+        
+        // Processing State
         const processingRef = useRef(false);
+        const lastProcessTimeRef = useRef(0);
         
         // State
         const [initialized, setInitialized] = useState(false);
@@ -206,35 +222,9 @@
                 minTrackingConfidence: 0.5
               });
               
+              // Note: We ONLY update data here. Rendering happens in the loop.
               hands.onResults((results) => {
                  latestLandmarksRef.current = results.multiHandLandmarks?.length ? results.multiHandLandmarks[0] : null;
-
-                 if (trackingCanvasRef.current && results.image && window.drawConnectors) {
-                    const ctx = trackingCanvasRef.current.getContext('2d');
-                    if (ctx) {
-                        const w = trackingCanvasRef.current.width;
-                        const h = trackingCanvasRef.current.height;
-                        ctx.save();
-                        ctx.clearRect(0,0,w,h);
-                        ctx.scale(-1, 1);
-                        ctx.translate(-w, 0);
-                        ctx.drawImage(results.image, 0, 0, w, h);
-                        ctx.restore();
-                        
-                        ctx.fillStyle = "rgba(0, 255, 255, 0.1)";
-                        ctx.fillRect(0,0,w,h);
-                        
-                        if (results.multiHandLandmarks) {
-                            for (const l of results.multiHandLandmarks) {
-                                ctx.save();
-                                ctx.scale(-1, 1);
-                                ctx.translate(-w, 0);
-                                window.drawConnectors(ctx, l, window.HAND_CONNECTIONS, {color: '#00ffff', lineWidth: 2});
-                                ctx.restore();
-                            }
-                        }
-                    }
-                 }
               });
               handsRef.current = hands;
               log("AI Core Online");
@@ -383,8 +373,11 @@
             if (!sceneRef.current) return;
             const dt = clock.getDelta();
             const elapsed = clock.getElapsedTime();
+            const now = Date.now();
 
+            // --- VIDEO & TRACKING UPDATE ---
             if (videoRef.current && videoRef.current.readyState >= 2) {
+               // 1. Update ThreeJS Background
                if (!videoTexture) {
                    videoTexture = new THREE.VideoTexture(videoRef.current);
                    videoTexture.colorSpace = THREE.SRGBColorSpace;
@@ -393,13 +386,54 @@
                  scene.background = videoTexture;
                  setCameraReady(true);
                }
-               if (handsRef.current && !processingRef.current && elapsed % 0.1 < 0.05) { 
+
+               // 2. Draw Tracking View (Force update every frame)
+               // This ensures the bottom-right view is smooth even if AI is lagging
+               if (trackingCanvasRef.current) {
+                  const ctx = trackingCanvasRef.current.getContext('2d');
+                  if (ctx) {
+                      const w = trackingCanvasRef.current.width;
+                      const h = trackingCanvasRef.current.height;
+                      
+                      // Draw Video
+                      ctx.save();
+                      ctx.scale(-1, 1);
+                      ctx.translate(-w, 0);
+                      ctx.drawImage(videoRef.current, 0, 0, w, h);
+                      ctx.restore();
+                      
+                      // Overlay Style
+                      ctx.fillStyle = "rgba(0, 255, 255, 0.1)";
+                      ctx.fillRect(0,0,w,h);
+                      
+                      // Draw Last Known Landmarks
+                      const l = latestLandmarksRef.current;
+                      if (l && window.drawConnectors) {
+                           ctx.save();
+                           ctx.scale(-1, 1);
+                           ctx.translate(-w, 0);
+                           window.drawConnectors(ctx, l, window.HAND_CONNECTIONS, {color: '#00ffff', lineWidth: 2});
+                           ctx.restore();
+                      }
+                  }
+               }
+
+               // 3. Send to AI (Throttled)
+               // Safety reset: If AI hangs for > 2 seconds, force unlock
+               if (processingRef.current && (now - lastProcessTimeRef.current > 2000)) {
+                   processingRef.current = false;
+               }
+
+               // Limit AI checks to ~15 FPS to save mobile resources
+               if (handsRef.current && !processingRef.current && (now - lastProcessTimeRef.current > 60)) { 
                   processingRef.current = true;
+                  lastProcessTimeRef.current = now;
                   handsRef.current.send({image: videoRef.current})
                     .then(() => { processingRef.current = false; })
                     .catch(() => { processingRef.current = false; });
                }
             }
+            // -------------------------------
 
             recoilRef.current.x *= recoilRef.current.decay;
             recoilRef.current.y *= recoilRef.current.decay;
