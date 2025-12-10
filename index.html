@@ -222,7 +222,6 @@
                 minTrackingConfidence: 0.5
               });
               
-              // Note: We ONLY update data here. Rendering happens in the loop.
               hands.onResults((results) => {
                  latestLandmarksRef.current = results.multiHandLandmarks?.length ? results.multiHandLandmarks[0] : null;
               });
@@ -238,7 +237,11 @@
              log("Requesting Sensors...");
              try {
                 stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, 
+                    video: { 
+                        facingMode: 'user', 
+                        width: { ideal: 640 }, 
+                        height: { ideal: 480 } 
+                    }, 
                     audio: false 
                 });
              } catch (e) {
@@ -257,6 +260,8 @@
              
              if (videoRef.current && stream) {
                  videoRef.current.srcObject = stream;
+                 // CRITICAL: Ensure video plays inline without full screen
+                 videoRef.current.setAttribute('playsinline', 'true');
                  videoRef.current.onloadedmetadata = () => {
                      videoRef.current.play()
                       .then(() => log("Video Feed Active"))
@@ -388,25 +393,21 @@
                }
 
                // 2. Draw Tracking View (Force update every frame)
-               // This ensures the bottom-right view is smooth even if AI is lagging
                if (trackingCanvasRef.current) {
                   const ctx = trackingCanvasRef.current.getContext('2d');
                   if (ctx) {
                       const w = trackingCanvasRef.current.width;
                       const h = trackingCanvasRef.current.height;
                       
-                      // Draw Video
                       ctx.save();
                       ctx.scale(-1, 1);
                       ctx.translate(-w, 0);
                       ctx.drawImage(videoRef.current, 0, 0, w, h);
                       ctx.restore();
                       
-                      // Overlay Style
                       ctx.fillStyle = "rgba(0, 255, 255, 0.1)";
                       ctx.fillRect(0,0,w,h);
                       
-                      // Draw Last Known Landmarks
                       const l = latestLandmarksRef.current;
                       if (l && window.drawConnectors) {
                            ctx.save();
@@ -419,13 +420,13 @@
                }
 
                // 3. Send to AI (Throttled)
-               // Safety reset: If AI hangs for > 2 seconds, force unlock
+               // Auto-recover if stuck for > 2s
                if (processingRef.current && (now - lastProcessTimeRef.current > 2000)) {
                    processingRef.current = false;
                }
 
-               // Limit AI checks to ~15 FPS to save mobile resources
-               if (handsRef.current && !processingRef.current && (now - lastProcessTimeRef.current > 60)) { 
+               // Process every ~100ms (10 FPS) for performance stability on mobile
+               if (handsRef.current && !processingRef.current && (now - lastProcessTimeRef.current > 100)) { 
                   processingRef.current = true;
                   lastProcessTimeRef.current = now;
                   handsRef.current.send({image: videoRef.current})
@@ -582,7 +583,19 @@
             <div className="absolute top-20 left-10 w-64 h-px bg-white/20 z-10 hidden md:block"></div>
             <div className="absolute bottom-20 right-10 w-64 h-px bg-white/20 z-10 hidden md:block"></div>
             
-            <video ref={videoRef} className="hidden" playsInline muted autoPlay></video>
+            {/* 
+                CRITICAL FIX: 
+                Use inline styles for opacity:0 instead of class="hidden".
+                Mobile browsers pause video decoding if display:none.
+            */}
+            <video 
+              ref={videoRef} 
+              playsInline 
+              muted 
+              autoPlay 
+              style={{ position: 'absolute', opacity: 0, zIndex: -1, pointerEvents: 'none' }}
+            ></video>
+            
             <canvas ref={canvasRef} className="block w-full h-full" />
             
             {!initialized && (
