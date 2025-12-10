@@ -15,7 +15,7 @@
     <!-- 1. Babel for in-browser compilation -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- 2. Import Maps for modules -->
+    <!-- 2. Import Maps for modules - STRICT REACT 18 VERSIONS TO PREVENT CONFLICTS -->
     <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
     <script type="importmap">
 {
@@ -217,7 +217,7 @@
               
               hands.setOptions({
                 maxNumHands: 1,
-                modelComplexity: 1,
+                modelComplexity: 0, // Lower complexity for mobile speed
                 minDetectionConfidence: 0.5,
                 minTrackingConfidence: 0.5
               });
@@ -260,16 +260,21 @@
              
              if (videoRef.current && stream) {
                  videoRef.current.srcObject = stream;
-                 // CRITICAL: Ensure video plays inline without full screen
+                 // Force attributes to ensure mobile play
                  videoRef.current.setAttribute('playsinline', 'true');
-                 videoRef.current.onloadedmetadata = () => {
+                 videoRef.current.setAttribute('webkit-playsinline', 'true');
+                 videoRef.current.muted = true;
+
+                 const tryPlay = () => {
                      videoRef.current.play()
                       .then(() => log("Video Feed Active"))
                       .catch(e => {
                           log("Play Blocked: " + e.message);
-                          setCameraError("CAMERA PERMISSION BLOCKED");
+                          // Retry on interaction if needed
+                          setTimeout(tryPlay, 1000);
                       });
                  };
+                 videoRef.current.onloadedmetadata = tryPlay;
              }
           } else {
               setCameraError("BROWSER UNSUPPORTED");
@@ -387,9 +392,12 @@
                    videoTexture = new THREE.VideoTexture(videoRef.current);
                    videoTexture.colorSpace = THREE.SRGBColorSpace;
                }
-               if (videoTexture && !cameraReady) {
-                 scene.background = videoTexture;
-                 setCameraReady(true);
+               if (videoTexture) {
+                 // Ensure background is set
+                 if (!scene.background || !scene.background.isTexture) {
+                    scene.background = videoTexture;
+                    setCameraReady(true);
+                 }
                }
 
                // 2. Draw Tracking View (Force update every frame)
@@ -425,8 +433,8 @@
                    processingRef.current = false;
                }
 
-               // Process every ~100ms (10 FPS) for performance stability on mobile
-               if (handsRef.current && !processingRef.current && (now - lastProcessTimeRef.current > 100)) { 
+               // Process every ~80ms (12 FPS) - Balance between smoothness and performance
+               if (handsRef.current && !processingRef.current && (now - lastProcessTimeRef.current > 80)) { 
                   processingRef.current = true;
                   lastProcessTimeRef.current = now;
                   handsRef.current.send({image: videoRef.current})
@@ -585,15 +593,16 @@
             
             {/* 
                 CRITICAL FIX: 
-                Use inline styles for opacity:0 instead of class="hidden".
-                Mobile browsers pause video decoding if display:none.
+                On Mobile, a display:none video will STOP processing frames.
+                An opacity:0 video might also be optimized away.
+                We put it behind everything (z-index -2) with full size.
             */}
             <video 
               ref={videoRef} 
               playsInline 
               muted 
               autoPlay 
-              style={{ position: 'absolute', opacity: 0, zIndex: -1, pointerEvents: 'none' }}
+              style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: -2, opacity: 0.01, objectFit: 'cover' }}
             ></video>
             
             <canvas ref={canvasRef} className="block w-full h-full" />
