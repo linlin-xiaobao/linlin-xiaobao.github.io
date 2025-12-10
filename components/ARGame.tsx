@@ -32,12 +32,18 @@ export default function ARGame({ gameState, onScoreUpdate, onGameOver }: ARGameP
   const targetsRef = useRef<THREE.Group[]>([]);
   const laserRef = useRef<THREE.Line | null>(null);
   const reticleRef = useRef<THREE.Group | null>(null);
+  const muzzleFlashRef = useRef<THREE.Mesh | null>(null);
+  const droneTextureRef = useRef<THREE.Texture | null>(null);
+  
   const scoreRef = useRef(0);
   const isTriggeredRef = useRef(false);
   const lastShotTimeRef = useRef(0);
   const latestLandmarksRef = useRef<any>(null);
   const handsRef = useRef<any>(null);
-  const processingRef = useRef(false); // Throttling flag
+  const processingRef = useRef(false);
+  
+  // Recoil State
+  const recoilRef = useRef({ x: 0, y: 0, decay: 0.85 });
   
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
@@ -51,6 +57,51 @@ export default function ARGame({ gameState, onScoreUpdate, onGameOver }: ARGameP
     }, 800);
   };
 
+  const triggerHaptic = (pattern: number | number[]) => {
+    if (navigator.vibrate) {
+      navigator.vibrate(pattern);
+    }
+  };
+
+  // Create procedural drone texture
+  const createDroneTexture = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+        // Glow
+        const grad = ctx.createRadialGradient(128,128,40, 128,128,120);
+        grad.addColorStop(0, 'rgba(0, 255, 255, 1)');
+        grad.addColorStop(0.5, 'rgba(0, 100, 100, 0.5)');
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0,0,256,256);
+        
+        // Inner Core
+        ctx.beginPath();
+        ctx.arc(128, 128, 40, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        
+        // Tech rings
+        ctx.strokeStyle = '#ff4655';
+        ctx.lineWidth = 8;
+        ctx.beginPath();
+        ctx.arc(128, 128, 60, 0, Math.PI * 1.5);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#00ffff';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(128, 128, 75, Math.PI, Math.PI * 2.5);
+        ctx.stroke();
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    droneTextureRef.current = tex;
+    return tex;
+  };
+
   useEffect(() => {
     if (!containerRef.current || !canvasRef.current) return;
 
@@ -58,17 +109,16 @@ export default function ARGame({ gameState, onScoreUpdate, onGameOver }: ARGameP
     let clock = new THREE.Clock();
 
     // --- Three.js Setup ---
-    const width = window.innerWidth;
-    const height = window.innerHeight;
+    const width = containerRef.current.clientWidth;
+    const height = containerRef.current.clientHeight;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0f1923); // Default Valorant Blue-Black
-    scene.fog = new THREE.FogExp2(0x0f1923, 0.02);
+    scene.background = new THREE.Color(0x0f1923); // Initial dark blue background
 
     // Lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
     scene.add(ambientLight);
-    const dirLight = new THREE.DirectionalLight(0xff4655, 1.5);
+    const dirLight = new THREE.DirectionalLight(0xff4655, 3);
     dirLight.position.set(-5, 5, 5);
     scene.add(dirLight);
 
@@ -90,17 +140,37 @@ export default function ARGame({ gameState, onScoreUpdate, onGameOver }: ARGameP
     sceneRef.current = scene;
     cameraRef.current = threeCamera;
     rendererRef.current = renderer;
-
-    // --- Assets ---
     
-    // Grid Floor (Visible when camera is off or as overlay)
-    const gridHelper = new THREE.GridHelper(100, 40, 0xff4655, 0x334155);
-    gridHelper.position.y = -10;
+    // Initialize Texture
+    createDroneTexture();
+
+    // Environment Grid (Always visible fallback)
+    const gridHelper = new THREE.GridHelper(200, 50, 0x00ffff, 0x1a2b3c);
+    gridHelper.position.y = -20;
+    (gridHelper.material as THREE.Material).transparent = true;
+    (gridHelper.material as THREE.Material).opacity = 0.15;
     scene.add(gridHelper);
+    
+    // Add some floating dust particles for ambiance
+    const particlesGeo = new THREE.BufferGeometry();
+    const particleCount = 200;
+    const posArray = new Float32Array(particleCount * 3);
+    for(let i=0; i<particleCount*3; i++) {
+        posArray[i] = (Math.random() - 0.5) * 100;
+    }
+    particlesGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+    const particlesMat = new THREE.PointsMaterial({
+        size: 0.2,
+        color: 0x00ffff,
+        transparent: true,
+        opacity: 0.4
+    });
+    const particles = new THREE.Points(particlesGeo, particlesMat);
+    scene.add(particles);
 
     // Laser Line
     const laserMaterial = new THREE.LineBasicMaterial({ 
-      color: 0xff4655, 
+      color: 0xff4655, // Valorant Red
       linewidth: 2, 
       transparent: true, 
       opacity: 0.8,
@@ -112,72 +182,103 @@ export default function ARGame({ gameState, onScoreUpdate, onGameOver }: ARGameP
     scene.add(laserLine);
     laserRef.current = laserLine;
 
+    // Muzzle Flash
+    const flashGeo = new THREE.PlaneGeometry(3, 3);
+    const canvas = document.createElement('canvas');
+    canvas.width = 64; canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+        const grad = ctx.createRadialGradient(32,32,0, 32,32,32);
+        grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        grad.addColorStop(0.3, 'rgba(255, 200, 100, 0.8)');
+        grad.addColorStop(1, 'rgba(255, 70, 85, 0)'); // Reddish fade
+        ctx.fillStyle = grad;
+        ctx.fillRect(0,0,64,64);
+    }
+    const flashTex = new THREE.CanvasTexture(canvas);
+    const flashMat = new THREE.MeshBasicMaterial({ 
+        map: flashTex, 
+        transparent: true, 
+        opacity: 0, 
+        depthTest: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide
+    });
+    const muzzleFlash = new THREE.Mesh(flashGeo, flashMat);
+    muzzleFlash.visible = false;
+    scene.add(muzzleFlash);
+    muzzleFlashRef.current = muzzleFlash;
+
     // Reticle
     const reticleGroup = new THREE.Group();
-    const reticleRingGeo = new THREE.RingGeometry(0.15, 0.18, 32);
-    const reticleMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.9, depthTest: false });
-    const reticleRing = new THREE.Mesh(reticleRingGeo, reticleMat);
-    reticleGroup.add(reticleRing);
+    const dotGeo = new THREE.CircleGeometry(0.08, 16);
+    const dotMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+    reticleGroup.add(new THREE.Mesh(dotGeo, dotMat));
     
-    const crosshairGeo = new THREE.PlaneGeometry(0.6, 0.04);
-    const crosshairMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, depthTest: false });
-    const crossV = new THREE.Mesh(crosshairGeo, crosshairMat);
-    const crossH = new THREE.Mesh(crosshairGeo, crosshairMat);
-    crossH.rotation.z = Math.PI / 2;
-    const left = crossV.clone(); left.position.x = -0.4;
-    const right = crossV.clone(); right.position.x = 0.4;
-    const top = crossH.clone(); top.position.y = 0.4;
-    const bottom = crossH.clone(); bottom.position.y = -0.4;
-    reticleGroup.add(left, right, top, bottom);
+    const ringGeo = new THREE.RingGeometry(0.4, 0.45, 32);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    reticleGroup.add(ring);
+    
+    // Cross lines
+    const lineGeo = new THREE.PlaneGeometry(1.2, 0.05);
+    const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 });
+    const lineH = new THREE.Mesh(lineGeo, lineMat);
+    const lineV = new THREE.Mesh(lineGeo, lineMat);
+    lineV.rotation.z = Math.PI / 2;
+    reticleGroup.add(lineH);
+    reticleGroup.add(lineV);
+
     scene.add(reticleGroup);
     reticleRef.current = reticleGroup;
 
-    // Video Texture Setup
+    // Video Texture
     let videoTexture: THREE.VideoTexture | null = null;
     if (videoRef.current) {
         videoTexture = new THREE.VideoTexture(videoRef.current);
         videoTexture.colorSpace = THREE.SRGBColorSpace;
         videoTexture.minFilter = THREE.LinearFilter;
-        videoTexture.magFilter = THREE.LinearFilter;
     }
 
     // --- Spawner ---
     const spawnTarget = () => {
       const group = new THREE.Group();
       
-      // Core
-      const coreGeo = new THREE.IcosahedronGeometry(0.6, 0);
-      const coreMat = new THREE.MeshStandardMaterial({ 
-        color: 0x00ffff, 
-        emissive: 0x008888,
-        emissiveIntensity: 0.5,
-        roughness: 0.2,
-        metalness: 0.8,
-        flatShading: true
-      });
-      const core = new THREE.Mesh(coreGeo, coreMat);
-      group.add(core);
+      // Use Sprite for better performance and look with custom texture
+      if (droneTextureRef.current) {
+          const spriteMat = new THREE.SpriteMaterial({ 
+              map: droneTextureRef.current,
+              color: 0xffffff,
+              blending: THREE.AdditiveBlending
+          });
+          const sprite = new THREE.Sprite(spriteMat);
+          sprite.scale.set(3, 3, 1);
+          group.add(sprite);
+      } else {
+          // Fallback geometry
+          const geo = new THREE.SphereGeometry(1);
+          const mat = new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true });
+          group.add(new THREE.Mesh(geo, mat));
+      }
 
-      // Ring
-      const ringGeo = new THREE.TorusGeometry(0.9, 0.05, 8, 32);
-      const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 });
+      // Add a rotating ring geometry for 3D feel
+      const ringGeo = new THREE.TorusGeometry(1.2, 0.05, 8, 32);
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0xff4655, wireframe: true });
       const ring = new THREE.Mesh(ringGeo, ringMat);
       group.add(ring);
 
-      const spawnDist = 18;
-      const angle = Math.random() * Math.PI * 2;
+      const spawnDist = 25;
+      const angle = (Math.random() - 0.5) * Math.PI * 1.5; 
       group.position.set(
-        Math.cos(angle) * spawnDist,
-        (Math.random() - 0.5) * 8, 
-        -20 
+        Math.sin(angle) * spawnDist,
+        (Math.random() - 0.5) * 12, 
+        -30 + (Math.random() * 5)
       );
       
-      group.lookAt(0, 0, 0);
-      
       group.userData = {
-        velocity: new THREE.Vector3().subVectors(new THREE.Vector3(0,0,5), group.position).normalize().multiplyScalar(4 + Math.random() * 2),
+        velocity: new THREE.Vector3(0,0,1).applyEuler(new THREE.Euler(0, -angle, 0)).multiplyScalar(5 + Math.random() * 4), 
         active: true,
-        rotSpeed: (Math.random() - 0.5) * 4
+        rotSpeed: (Math.random() - 0.5) * 5
       };
       
       scene.add(group);
@@ -185,103 +286,119 @@ export default function ARGame({ gameState, onScoreUpdate, onGameOver }: ARGameP
     };
 
     // --- Game Loop ---
-    const loop = async () => {
+    const loop = () => {
       if (!sceneRef.current || !cameraRef.current || !rendererRef.current) return;
       
       const dt = clock.getDelta();
+      const elapsed = clock.getElapsedTime();
 
-      // 1. Process Video & MediaPipe
+      // 1. Video Update (Safely)
       if (videoRef.current && videoRef.current.readyState >= 2) {
-        // Update background if video is playing
-        if (scene.background instanceof THREE.Color) {
-           if (videoTexture) scene.background = videoTexture;
+        if (videoTexture && !cameraReady) {
+           scene.background = videoTexture;
            setCameraReady(true);
         }
-
-        // Send to MediaPipe (throttled)
-        if (handsRef.current && !processingRef.current) {
+        
+        if (handsRef.current && !processingRef.current && elapsed % 0.1 < 0.05) { // Throttle slightly
           processingRef.current = true;
-          // Fire and forget to not block render loop
           handsRef.current.send({image: videoRef.current})
             .then(() => { processingRef.current = false; })
             .catch(() => { processingRef.current = false; });
         }
       }
 
-      // 2. Game Logic
+      // Recoil
+      recoilRef.current.x *= recoilRef.current.decay;
+      recoilRef.current.y *= recoilRef.current.decay;
+      cameraRef.current.rotation.x = recoilRef.current.y * 0.1;
+      cameraRef.current.rotation.y = recoilRef.current.x * 0.1;
+
+      // 2. Logic
       if (gameState === 1) { // Playing
-        if (targetsRef.current.length < 4) {
-          if (Math.random() < 0.05) spawnTarget();
+        if (targetsRef.current.length < 4 && Math.random() < 0.05) {
+           spawnTarget();
         }
 
         for (let i = targetsRef.current.length - 1; i >= 0; i--) {
           const target = targetsRef.current[i];
           if (target.userData.active) {
             target.position.add(target.userData.velocity.clone().multiplyScalar(dt));
-            target.children[0].rotation.y += dt;
-            target.children[1].rotation.x += dt * target.userData.rotSpeed;
-            target.children[1].rotation.y += dt;
+            
+            // Rotate the 3D ring
+            if(target.children[1]) {
+                target.children[1].rotation.x += dt * 2;
+                target.children[1].rotation.y += dt * target.userData.rotSpeed;
+            }
 
-            if (target.position.z > 8) {
+            // Pulse effect
+            const scale = 1 + Math.sin(elapsed * 5) * 0.1;
+            target.scale.setScalar(scale);
+
+            if (target.position.z > 5) {
               scene.remove(target);
               targetsRef.current.splice(i, 1);
               generateSound('miss');
               
-              // Project to screen for text
               const vector = target.position.clone();
               vector.project(cameraRef.current);
-              const x = (vector.x * .5 + .5) * window.innerWidth;
-              const y = (-(vector.y * .5) + .5) * window.innerHeight;
+              const x = (vector.x * .5 + .5) * containerRef.current!.clientWidth;
+              const y = (-(vector.y * .5) + .5) * containerRef.current!.clientHeight;
               addFloatingText(x, y, "MISS", "miss");
             }
           }
         }
 
-        // Hand Interaction
         const landmarks = latestLandmarksRef.current;
-        let aimPoint = new THREE.Vector3(0, 0, -20);
         let isShooting = false;
-
+        
         if (landmarks) {
           const indexTip = landmarks[8];
           const indexMCP = landmarks[5];
           const thumbTip = landmarks[4];
           
-          const ndcX = (1 - indexTip.x) * 2 - 1; 
+          const ndcX = -(1 - indexTip.x) * 2 + 1;
           const ndcY = -(indexTip.y * 2 - 1);
-
+          
           const raycaster = new THREE.Raycaster();
           raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), cameraRef.current);
+          
+          // Hand position estimation (Visual only)
+          const vec = new THREE.Vector3(ndcX, ndcY, 0.5).unproject(cameraRef.current);
+          vec.sub(cameraRef.current.position).normalize();
+          const handPos = cameraRef.current.position.clone().add(vec.multiplyScalar(3));
 
-          // Aim Assist
-          let closestDist = Infinity;
+          // Magnetism
+          let aimPoint = raycaster.ray.origin.clone().add(raycaster.ray.direction.multiplyScalar(50));
           let closestTarget: THREE.Group | null = null;
-          const magnetismThreshold = 3.0;
-          const ray = raycaster.ray;
+          let minDist = 3.0; // Magnetism radius
 
           targetsRef.current.forEach(target => {
-            const targetCenter = target.position.clone();
-            const dist = ray.distanceSqToPoint(targetCenter);
-            if (dist < closestDist && dist < magnetismThreshold) {
-              closestDist = dist;
+            const dist = raycaster.ray.distanceSqToPoint(target.position);
+            if (dist < minDist) {
+              minDist = dist;
               closestTarget = target;
             }
           });
 
           if (closestTarget) {
-            aimPoint.copy(closestTarget.position);
-            if (reticleRef.current) reticleRef.current.children.forEach((mesh: any) => mesh.material.color.setHex(0xff4655));
+            aimPoint.copy((closestTarget as THREE.Group).position);
+            if (reticleRef.current) {
+                (reticleRef.current.children[0] as THREE.Mesh).material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+                (reticleRef.current.children[1] as THREE.Mesh).material = new THREE.MeshBasicMaterial({ color: 0xff4655, opacity: 0.9, transparent: true });
+            }
           } else {
-            aimPoint.copy(ray.origin).add(ray.direction.multiplyScalar(20));
-            if (reticleRef.current) reticleRef.current.children.forEach((mesh: any) => mesh.material.color.setHex(0x00ffff));
+             if (reticleRef.current) {
+                (reticleRef.current.children[0] as THREE.Mesh).material = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+                (reticleRef.current.children[1] as THREE.Mesh).material = new THREE.MeshBasicMaterial({ color: 0xffffff, opacity: 0.5, transparent: true });
+             }
           }
 
           // Trigger
           const triggerDist = Math.hypot(thumbTip.x - indexMCP.x, thumbTip.y - indexMCP.y);
-          if (triggerDist < 0.08) {
+          if (triggerDist < 0.12) {
             if (!isTriggeredRef.current) {
                const now = Date.now();
-               if (now - lastShotTimeRef.current > 250) {
+               if (now - lastShotTimeRef.current > 120) {
                  isShooting = true;
                  lastShotTimeRef.current = now;
                }
@@ -291,54 +408,59 @@ export default function ARGame({ gameState, onScoreUpdate, onGameOver }: ARGameP
             isTriggeredRef.current = false;
           }
 
-          // Visuals
-          if (laserRef.current) {
-            const positions = laserRef.current.geometry.attributes.position.array as Float32Array;
-            const vec = new THREE.Vector3(ndcX, ndcY, 0.5);
-            vec.unproject(cameraRef.current);
-            vec.sub(cameraRef.current.position).normalize();
-            const handWorldPos = cameraRef.current.position.clone().add(vec.multiplyScalar(8));
-
-            positions[0] = handWorldPos.x + 0.2;
-            positions[1] = handWorldPos.y - 0.5;
-            positions[2] = handWorldPos.z;
-            positions[3] = aimPoint.x;
-            positions[4] = aimPoint.y;
-            positions[5] = aimPoint.z;
-            laserRef.current.geometry.attributes.position.needsUpdate = true;
-          }
-
+          // Visuals Update
           if (reticleRef.current) {
-            reticleRef.current.visible = true;
-            reticleRef.current.position.copy(aimPoint);
-            reticleRef.current.lookAt(cameraRef.current.position);
+              reticleRef.current.visible = true;
+              reticleRef.current.position.copy(aimPoint);
+              reticleRef.current.lookAt(cameraRef.current.position);
+              const d = cameraRef.current.position.distanceTo(aimPoint);
+              const s = d * 0.03;
+              reticleRef.current.scale.set(s,s,s);
+          }
+          if (laserRef.current) {
+              const pos = laserRef.current.geometry.attributes.position.array as Float32Array;
+              pos[0] = handPos.x; pos[1] = handPos.y - 0.2; pos[2] = handPos.z;
+              pos[3] = aimPoint.x; pos[4] = aimPoint.y; pos[5] = aimPoint.z;
+              laserRef.current.geometry.attributes.position.needsUpdate = true;
           }
 
           if (isShooting) {
             generateSound('shoot');
+            triggerHaptic(30);
+            
+            // Recoil
+            recoilRef.current.x = (Math.random() - 0.5) * 0.4;
+            recoilRef.current.y = 0.6; // Upwards kick
+
+            // Muzzle Flash
+            if (muzzleFlashRef.current) {
+                muzzleFlashRef.current.position.copy(handPos).add(new THREE.Vector3(0,0,-1.5));
+                muzzleFlashRef.current.lookAt(aimPoint);
+                muzzleFlashRef.current.visible = true;
+                setTimeout(() => { if(muzzleFlashRef.current) muzzleFlashRef.current.visible = false; }, 60);
+            }
+
             if (closestTarget) {
-              scene.remove(closestTarget);
-              targetsRef.current = targetsRef.current.filter(t => t !== closestTarget);
-              scoreRef.current += 1;
-              onScoreUpdate(scoreRef.current);
-              generateSound('hit');
-              
-              const vector = closestTarget.position.clone();
-              vector.project(cameraRef.current);
-              const x = (vector.x * .5 + .5) * window.innerWidth;
-              const y = (-(vector.y * .5) + .5) * window.innerHeight;
-              addFloatingText(x, y, "HIT", "hit");
+               scene.remove(closestTarget);
+               targetsRef.current = targetsRef.current.filter(t => t !== closestTarget);
+               scoreRef.current += 1;
+               onScoreUpdate(scoreRef.current);
+               generateSound('hit');
+               triggerHaptic([30, 50]);
+               
+               const vector = closestTarget.position.clone();
+               vector.project(cameraRef.current);
+               const x = (vector.x * .5 + .5) * containerRef.current!.clientWidth;
+               const y = (-(vector.y * .5) + .5) * containerRef.current!.clientHeight;
+               addFloatingText(x, y, "DESTROYED", "hit");
             }
           }
-
         } else {
-          // No Hand
-          if (reticleRef.current) reticleRef.current.visible = false;
-          if (laserRef.current) {
-             const positions = laserRef.current.geometry.attributes.position.array as Float32Array;
-             positions.fill(0);
-             laserRef.current.geometry.attributes.position.needsUpdate = true;
-          }
+           if (reticleRef.current) reticleRef.current.visible = false;
+           if (laserRef.current) {
+              (laserRef.current.geometry.attributes.position.array as Float32Array).fill(0);
+              laserRef.current.geometry.attributes.position.needsUpdate = true;
+           }
         }
       }
 
@@ -346,193 +468,156 @@ export default function ARGame({ gameState, onScoreUpdate, onGameOver }: ARGameP
       animationFrameId = requestAnimationFrame(loop);
     };
 
-    // --- MediaPipe Init ---
-    const initMP = async () => {
-      try {
-        if (!window.Hands) return;
+    // --- Init ---
+    const init = async () => {
+      // Start loop immediately so we don't have a black screen waiting for camera
+      animationFrameId = requestAnimationFrame(loop);
 
+      try {
+        if (!window.Hands) throw new Error("MediaPipe not loaded");
+        
         const hands = new window.Hands({
           locateFile: (file: string) => `https://unpkg.com/@mediapipe/hands@${MP_HANDS_VERSION}/${file}`
         });
-
+        
         hands.setOptions({
           maxNumHands: 1,
           modelComplexity: 1,
           minDetectionConfidence: 0.5,
           minTrackingConfidence: 0.5
         });
-
+        
         hands.onResults((results: any) => {
-          // Store Data
-          if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-            latestLandmarksRef.current = results.multiHandLandmarks[0];
-          } else {
-            latestLandmarksRef.current = null;
-          }
+           if (results.multiHandLandmarks?.length) {
+               latestLandmarksRef.current = results.multiHandLandmarks[0];
+           } else {
+               latestLandmarksRef.current = null;
+           }
 
-          // Draw Mini Canvas
-          if (trackingCanvasRef.current) {
-            const ctx = trackingCanvasRef.current.getContext('2d');
-            if (ctx) {
-              const w = trackingCanvasRef.current.width;
-              const h = trackingCanvasRef.current.height;
-              ctx.save();
-              ctx.clearRect(0, 0, w, h);
-              
-              // Draw Feed
-              if (results.image) {
-                ctx.drawImage(results.image, 0, 0, w, h);
+           // Draw Tracking View
+           if (trackingCanvasRef.current && results.image) {
+              const ctx = trackingCanvasRef.current.getContext('2d');
+              if (ctx) {
+                  const w = trackingCanvasRef.current.width;
+                  const h = trackingCanvasRef.current.height;
+                  ctx.save();
+                  ctx.clearRect(0,0,w,h);
+                  ctx.scale(-1, 1);
+                  ctx.translate(-w, 0);
+                  ctx.drawImage(results.image, 0, 0, w, h);
+                  ctx.restore();
+                  
+                  // Stylized Overlay
+                  ctx.fillStyle = "rgba(0, 255, 255, 0.1)";
+                  ctx.fillRect(0,0,w,h);
+                  
+                  if (results.multiHandLandmarks) {
+                      for (const l of results.multiHandLandmarks) {
+                          ctx.save();
+                          ctx.scale(-1, 1);
+                          ctx.translate(-w, 0);
+                          window.drawConnectors(ctx, l, window.HAND_CONNECTIONS, {color: '#00ffff', lineWidth: 2});
+                          ctx.restore();
+                      }
+                  }
               }
-
-              // Draw Grid Overlay (Scanline style)
-              ctx.fillStyle = "rgba(0, 20, 10, 0.3)";
-              ctx.fillRect(0, 0, w, h);
-
-              // Draw Skeleton
-              if (results.multiHandLandmarks) {
-                for (const landmarks of results.multiHandLandmarks) {
-                   window.drawConnectors(ctx, landmarks, window.HAND_CONNECTIONS, {color: '#00ffff', lineWidth: 2});
-                   window.drawLandmarks(ctx, landmarks, {color: '#ff4655', lineWidth: 1, radius: 2});
-                }
-              }
-              ctx.restore();
-            }
-          }
+           }
         });
-
         handsRef.current = hands;
 
-        // Manual getUserMedia for better mobile control
+        // Robust Camera Init
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
            let stream;
            try {
-             // Try Environment (Back) Camera First
-             stream = await navigator.mediaDevices.getUserMedia({ 
-               video: { facingMode: 'environment' },
-               audio: false 
-             });
+              stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
            } catch (e) {
-             console.warn("Environment camera failed, trying default...", e);
-             try {
-                // Try Default
-                stream = await navigator.mediaDevices.getUserMedia({ 
-                  video: true,
-                  audio: false 
-                });
-             } catch (e2) {
-                throw new Error("No camera accessible");
-             }
+              console.warn("Front cam failed, trying environment");
+              try {
+                  stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+              } catch (e2) {
+                  stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+              }
            }
-
+           
            if (videoRef.current) {
-             videoRef.current.srcObject = stream;
-             await videoRef.current.play();
-             setCameraError(null);
+               videoRef.current.srcObject = stream;
+               // Wait for metadata to load to prevent 0x0 size
+               videoRef.current.onloadedmetadata = () => {
+                   videoRef.current?.play().catch(e => console.error("Autoplay blocked", e));
+               };
            }
-        } else {
-           throw new Error("Browser API not supported");
         }
-
       } catch (err: any) {
-        console.error("Camera Init Error:", err);
-        setCameraError("OPTICAL SENSORS OFFLINE");
-        
-        // Render static on mini canvas if error
-        if (trackingCanvasRef.current) {
-          const ctx = trackingCanvasRef.current.getContext('2d');
-          if (ctx) {
-             ctx.fillStyle = "#000";
-             ctx.fillRect(0,0,320,240);
-             ctx.fillStyle = "red";
-             ctx.font = "20px Arial";
-             ctx.fillText("NO SIGNAL", 110, 120);
-          }
-        }
+         console.error(err);
+         setCameraError("VIDEO SENSOR ERROR: " + err.message);
       }
     };
 
-    initMP();
-    animationFrameId = requestAnimationFrame(loop);
+    init();
 
+    // Resize Handler
     const handleResize = () => {
-        if(cameraRef.current && rendererRef.current) {
-            const w = window.innerWidth;
-            const h = window.innerHeight;
-            cameraRef.current.aspect = w / h;
-            cameraRef.current.updateProjectionMatrix();
-            rendererRef.current.setSize(w, h);
-        }
+        if (!containerRef.current || !cameraRef.current || !rendererRef.current) return;
+        const w = containerRef.current.clientWidth;
+        const h = containerRef.current.clientHeight;
+        cameraRef.current.aspect = w / h;
+        cameraRef.current.updateProjectionMatrix();
+        rendererRef.current.setSize(w, h);
     };
     window.addEventListener('resize', handleResize);
+    handleResize(); // Force initial size
 
     return () => {
       window.removeEventListener('resize', handleResize);
       cancelAnimationFrame(animationFrameId);
-      if (handsRef.current) handsRef.current.close();
-      if (videoRef.current && videoRef.current.srcObject) {
-         const stream = videoRef.current.srcObject as MediaStream;
-         stream.getTracks().forEach(track => track.stop());
-      }
-      if (rendererRef.current) rendererRef.current.dispose();
+      if(handsRef.current) handsRef.current.close();
+      if(sceneRef.current) sceneRef.current.clear();
+      if(rendererRef.current) rendererRef.current.dispose();
+      const s = videoRef.current?.srcObject as MediaStream;
+      s?.getTracks().forEach(t => t.stop());
     };
-  }, [gameState, onScoreUpdate]); 
+  }, [gameState, onScoreUpdate]);
 
   return (
-    <div ref={containerRef} className="absolute inset-0 w-full h-full bg-[#0f1923]">
-      {/* Hidden Source Video */}
-      <video 
-        ref={videoRef} 
-        className="hidden" 
-        playsInline 
-        muted 
-        autoPlay
-      ></video>
+    <div ref={containerRef} className="absolute inset-0 w-full h-full bg-[#0f1923] overflow-hidden">
+      {/* Decorative Overlays */}
+      <div className="absolute inset-0 pointer-events-none z-10 opacity-60" 
+           style={{ background: 'radial-gradient(circle at center, transparent 30%, #000 120%)' }}></div>
       
-      {/* Main Game Canvas */}
-      <canvas ref={canvasRef} className="block w-full h-full object-cover" />
+      {/* HUD Lines */}
+      <div className="absolute top-20 left-10 w-64 h-px bg-white/20 z-10 hidden md:block"></div>
+      <div className="absolute bottom-20 right-10 w-64 h-px bg-white/20 z-10 hidden md:block"></div>
       
-      {/* Mini Tracking View (Bottom Right) */}
-      <div className="absolute bottom-4 right-4 w-48 h-36 z-20 border-2 border-[#ff4655] bg-black overflow-hidden shadow-[0_0_15px_rgba(255,70,85,0.5)]">
-         <canvas ref={trackingCanvasRef} width={320} height={240} className="w-full h-full object-cover opacity-80" />
-         <div className="absolute top-0 left-0 bg-[#ff4655] text-white text-[10px] px-2 py-0.5 font-bold tracking-widest uppercase">
-           {cameraReady ? 'Live Feed' : 'Searching...'}
+      <video ref={videoRef} className="hidden" playsInline muted autoPlay></video>
+      <canvas ref={canvasRef} className="block w-full h-full" />
+      
+      {/* Mini Tracking */}
+      <div className="absolute bottom-4 right-4 w-40 h-32 md:w-56 md:h-40 z-20 border border-[#ff4655] bg-black/80 shadow-[0_0_10px_#ff4655]">
+         <canvas ref={trackingCanvasRef} width={320} height={240} className="w-full h-full object-cover tracking-scanline opacity-80" />
+         <div className="absolute bottom-0 w-full bg-[#ff4655] text-black text-[10px] font-bold px-1 font-val">
+            TARGETING SYS: {cameraReady ? 'ONLINE' : 'SEARCHING...'}
          </div>
-         {/* Decorative Scanlines */}
-         <div className="absolute inset-0 pointer-events-none bg-[url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAACCAYAAACZgbYnAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAABZJREFUeNpiYGBgAAJ0EA0AAwQYAAIAADs=')] opacity-30"></div>
       </div>
 
-      {/* Camera Error Message */}
       {cameraError && (
-        <div className="absolute top-24 left-1/2 -translate-x-1/2 w-[90%] md:w-auto bg-[#0f1923]/95 border-l-4 border-[#ff4655] text-white px-6 py-4 shadow-2xl z-30 flex flex-col items-center animate-pulse">
-           <h3 className="text-[#ff4655] font-bold tracking-widest mb-1 text-xl">SYSTEM FAILURE</h3>
-           <p className="text-gray-400 text-sm tracking-wide uppercase">{cameraError}</p>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-black/90 border border-red-500 p-6 text-center z-50">
+           <h2 className="text-red-500 font-bold mb-2">SYSTEM ERROR</h2>
+           <p className="text-white text-sm">{cameraError}</p>
         </div>
       )}
 
-      {/* Floating Damage Text */}
       {floatingTexts.map(ft => (
-        <div
-          key={ft.id}
-          className={`absolute text-5xl font-val font-bold pointer-events-none select-none ${
-            ft.type === 'hit' ? 'text-[#00ffff] drop-shadow-[0_0_10px_#00ffff]' : 'text-[#ff4655] drop-shadow-[0_0_5px_#ff0000]'
-          }`}
-          style={{ 
-            left: ft.x, 
-            top: ft.y, 
-            animation: 'floatUp 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards'
-          }}
-        >
-          {ft.text}
+        <div key={ft.id} className="absolute font-val font-bold text-6xl pointer-events-none"
+             style={{ 
+               left: ft.x, top: ft.y, 
+               color: ft.type === 'hit' ? '#ff4655' : '#fff',
+               textShadow: ft.type === 'hit' ? '0 0 20px #ff4655' : '0 0 10px #fff',
+               animation: 'floatUp 0.6s ease-out forwards'
+             }}>
+           {ft.text}
         </div>
       ))}
-      
-      <style>{`
-        @keyframes floatUp {
-          0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
-          50% { opacity: 1; transform: translate(-50%, -120%) scale(1.2); }
-          100% { opacity: 0; transform: translate(-50%, -150%) scale(1); }
-        }
-      `}</style>
+      <style>{`@keyframes floatUp { 0% { opacity: 0; transform: translate(-50%, 0) scale(0.5); } 20% { opacity: 1; transform: translate(-50%, -20px) scale(1.2); } 100% { opacity: 0; transform: translate(-50%, -80px) scale(1); } }`}</style>
     </div>
   );
 }
