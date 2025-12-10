@@ -42,12 +42,20 @@ export default function ARGame({ gameState, onScoreUpdate, onGameOver }: ARGameP
   const handsRef = useRef<any>(null);
   const processingRef = useRef(false);
   
-  // Recoil State
-  const recoilRef = useRef({ x: 0, y: 0, decay: 0.85 });
-  
+  // State
+  const [initialized, setInitialized] = useState(false);
+  const [logs, setLogs] = useState<string[]>([]);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [floatingTexts, setFloatingTexts] = useState<{id: number, x: number, y: number, text: string, type: 'hit' | 'miss'}[]>([]);
+
+  // Recoil State
+  const recoilRef = useRef({ x: 0, y: 0, decay: 0.85 });
+
+  const log = (msg: string) => {
+    console.log(msg);
+    setLogs(prev => [msg, ...prev].slice(0, 5));
+  };
 
   const addFloatingText = (x: number, y: number, text: string, type: 'hit' | 'miss') => {
     const id = Date.now() + Math.random();
@@ -102,6 +110,132 @@ export default function ARGame({ gameState, onScoreUpdate, onGameOver }: ARGameP
     return tex;
   };
 
+  // --- Initialization Sequence (Triggered by user click) ---
+  const startSystem = async () => {
+    if (initialized) return;
+    setInitialized(true);
+    log("System Initializing...");
+
+    // Resume Audio Context
+    try {
+       generateSound('ui');
+    } catch(e) {
+       log("Audio init warning");
+    }
+
+    // 1. Initialize MediaPipe
+    try {
+        if (!window.Hands) {
+            log("Waiting for MediaPipe...");
+            await new Promise(r => setTimeout(r, 1000)); // Give script a moment
+            if (!window.Hands) throw new Error("MediaPipe script failed to load");
+        }
+        
+        const hands = new window.Hands({
+          locateFile: (file: string) => `https://unpkg.com/@mediapipe/hands@${MP_HANDS_VERSION}/${file}`
+        });
+        
+        hands.setOptions({
+          maxNumHands: 1,
+          modelComplexity: 1,
+          minDetectionConfidence: 0.5,
+          minTrackingConfidence: 0.5
+        });
+        
+        hands.onResults((results: any) => {
+           if (results.multiHandLandmarks?.length) {
+               latestLandmarksRef.current = results.multiHandLandmarks[0];
+           } else {
+               latestLandmarksRef.current = null;
+           }
+
+           // Draw Tracking View
+           if (trackingCanvasRef.current && results.image && window.drawConnectors) {
+              const ctx = trackingCanvasRef.current.getContext('2d');
+              if (ctx) {
+                  const w = trackingCanvasRef.current.width;
+                  const h = trackingCanvasRef.current.height;
+                  ctx.save();
+                  ctx.clearRect(0,0,w,h);
+                  ctx.scale(-1, 1);
+                  ctx.translate(-w, 0);
+                  ctx.drawImage(results.image, 0, 0, w, h);
+                  ctx.restore();
+                  
+                  // Stylized Overlay
+                  ctx.fillStyle = "rgba(0, 255, 255, 0.1)";
+                  ctx.fillRect(0,0,w,h);
+                  
+                  if (results.multiHandLandmarks) {
+                      for (const l of results.multiHandLandmarks) {
+                          ctx.save();
+                          ctx.scale(-1, 1);
+                          ctx.translate(-w, 0);
+                          window.drawConnectors(ctx, l, window.HAND_CONNECTIONS, {color: '#00ffff', lineWidth: 2});
+                          ctx.restore();
+                      }
+                  }
+              }
+           }
+        });
+        handsRef.current = hands;
+        log("AI Core Online");
+    } catch (e: any) {
+        log("AI ERROR: " + e.message);
+        setCameraError("AI CORE FAILED");
+    }
+
+    // 2. Initialize Camera
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+       let stream;
+       log("Requesting Optical Sensors...");
+       try {
+          // Explicitly ask for 480p/VGA to ensure mobile support and performance
+          stream = await navigator.mediaDevices.getUserMedia({ 
+              video: { 
+                  facingMode: 'user', 
+                  width: { ideal: 640 }, 
+                  height: { ideal: 480 },
+                  frameRate: { ideal: 30 }
+              }, 
+              audio: false 
+          });
+          log("Front Sensor Acquired");
+       } catch (e: any) {
+          log("Front Sensor Fail: " + e.message);
+          try {
+              stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+              log("Rear Sensor Acquired");
+          } catch (e2) {
+              try {
+                  stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                  log("Generic Sensor Acquired");
+              } catch(e3: any) {
+                  log("FATAL: No Sensors");
+                  setCameraError("NO CAMERA FOUND");
+                  return;
+              }
+          }
+       }
+       
+       if (videoRef.current && stream) {
+           videoRef.current.srcObject = stream;
+           videoRef.current.onloadedmetadata = () => {
+               log("Video Metadata Loaded");
+               videoRef.current?.play()
+                .then(() => log("Video Feed Active"))
+                .catch(e => {
+                    log("Play Blocked: " + e.message);
+                    setCameraError("CAMERA PERMISSION BLOCKED");
+                });
+           };
+       }
+    } else {
+        log("MediaDevices API missing");
+        setCameraError("BROWSER UNSUPPORTED");
+    }
+  };
+
   useEffect(() => {
     if (!containerRef.current || !canvasRef.current) return;
 
@@ -109,11 +243,11 @@ export default function ARGame({ gameState, onScoreUpdate, onGameOver }: ARGameP
     let clock = new THREE.Clock();
 
     // --- Three.js Setup ---
-    const width = containerRef.current.clientWidth;
-    const height = containerRef.current.clientHeight;
+    const width = containerRef.current.clientWidth || window.innerWidth;
+    const height = containerRef.current.clientHeight || window.innerHeight;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0f1923); // Initial dark blue background
+    scene.background = new THREE.Color(0x0f1923); // Default Valorant Blue
 
     // Lights
     const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
@@ -151,7 +285,7 @@ export default function ARGame({ gameState, onScoreUpdate, onGameOver }: ARGameP
     (gridHelper.material as THREE.Material).opacity = 0.15;
     scene.add(gridHelper);
     
-    // Add some floating dust particles for ambiance
+    // Particles
     const particlesGeo = new THREE.BufferGeometry();
     const particleCount = 200;
     const posArray = new Float32Array(particleCount * 3);
@@ -191,7 +325,7 @@ export default function ARGame({ gameState, onScoreUpdate, onGameOver }: ARGameP
         const grad = ctx.createRadialGradient(32,32,0, 32,32,32);
         grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
         grad.addColorStop(0.3, 'rgba(255, 200, 100, 0.8)');
-        grad.addColorStop(1, 'rgba(255, 70, 85, 0)'); // Reddish fade
+        grad.addColorStop(1, 'rgba(255, 70, 85, 0)'); 
         ctx.fillStyle = grad;
         ctx.fillRect(0,0,64,64);
     }
@@ -220,31 +354,15 @@ export default function ARGame({ gameState, onScoreUpdate, onGameOver }: ARGameP
     const ring = new THREE.Mesh(ringGeo, ringMat);
     reticleGroup.add(ring);
     
-    // Cross lines
-    const lineGeo = new THREE.PlaneGeometry(1.2, 0.05);
-    const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 });
-    const lineH = new THREE.Mesh(lineGeo, lineMat);
-    const lineV = new THREE.Mesh(lineGeo, lineMat);
-    lineV.rotation.z = Math.PI / 2;
-    reticleGroup.add(lineH);
-    reticleGroup.add(lineV);
-
     scene.add(reticleGroup);
     reticleRef.current = reticleGroup;
 
-    // Video Texture
+    // Video Texture Placeholder
     let videoTexture: THREE.VideoTexture | null = null;
-    if (videoRef.current) {
-        videoTexture = new THREE.VideoTexture(videoRef.current);
-        videoTexture.colorSpace = THREE.SRGBColorSpace;
-        videoTexture.minFilter = THREE.LinearFilter;
-    }
 
     // --- Spawner ---
     const spawnTarget = () => {
       const group = new THREE.Group();
-      
-      // Use Sprite for better performance and look with custom texture
       if (droneTextureRef.current) {
           const spriteMat = new THREE.SpriteMaterial({ 
               map: droneTextureRef.current,
@@ -254,14 +372,8 @@ export default function ARGame({ gameState, onScoreUpdate, onGameOver }: ARGameP
           const sprite = new THREE.Sprite(spriteMat);
           sprite.scale.set(3, 3, 1);
           group.add(sprite);
-      } else {
-          // Fallback geometry
-          const geo = new THREE.SphereGeometry(1);
-          const mat = new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true });
-          group.add(new THREE.Mesh(geo, mat));
       }
-
-      // Add a rotating ring geometry for 3D feel
+      
       const ringGeo = new THREE.TorusGeometry(1.2, 0.05, 8, 32);
       const ringMat = new THREE.MeshBasicMaterial({ color: 0xff4655, wireframe: true });
       const ring = new THREE.Mesh(ringGeo, ringMat);
@@ -292,14 +404,21 @@ export default function ARGame({ gameState, onScoreUpdate, onGameOver }: ARGameP
       const dt = clock.getDelta();
       const elapsed = clock.getElapsedTime();
 
-      // 1. Video Update (Safely)
+      // 1. Video Update
       if (videoRef.current && videoRef.current.readyState >= 2) {
-        if (videoTexture && !cameraReady) {
+         // Create texture once we have dimensions
+         if (!videoTexture) {
+             videoTexture = new THREE.VideoTexture(videoRef.current);
+             videoTexture.colorSpace = THREE.SRGBColorSpace;
+             videoTexture.minFilter = THREE.LinearFilter;
+         }
+         
+         if (videoTexture && !cameraReady) {
            scene.background = videoTexture;
            setCameraReady(true);
-        }
+         }
         
-        if (handsRef.current && !processingRef.current && elapsed % 0.1 < 0.05) { // Throttle slightly
+        if (handsRef.current && !processingRef.current && elapsed % 0.1 < 0.05) { 
           processingRef.current = true;
           handsRef.current.send({image: videoRef.current})
             .then(() => { processingRef.current = false; })
@@ -324,13 +443,11 @@ export default function ARGame({ gameState, onScoreUpdate, onGameOver }: ARGameP
           if (target.userData.active) {
             target.position.add(target.userData.velocity.clone().multiplyScalar(dt));
             
-            // Rotate the 3D ring
             if(target.children[1]) {
                 target.children[1].rotation.x += dt * 2;
                 target.children[1].rotation.y += dt * target.userData.rotSpeed;
             }
 
-            // Pulse effect
             const scale = 1 + Math.sin(elapsed * 5) * 0.1;
             target.scale.setScalar(scale);
 
@@ -362,15 +479,13 @@ export default function ARGame({ gameState, onScoreUpdate, onGameOver }: ARGameP
           const raycaster = new THREE.Raycaster();
           raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), cameraRef.current);
           
-          // Hand position estimation (Visual only)
           const vec = new THREE.Vector3(ndcX, ndcY, 0.5).unproject(cameraRef.current);
           vec.sub(cameraRef.current.position).normalize();
           const handPos = cameraRef.current.position.clone().add(vec.multiplyScalar(3));
 
-          // Magnetism
           let aimPoint = raycaster.ray.origin.clone().add(raycaster.ray.direction.multiplyScalar(50));
           let closestTarget: THREE.Group | null = null;
-          let minDist = 3.0; // Magnetism radius
+          let minDist = 3.0; 
 
           targetsRef.current.forEach(target => {
             const dist = raycaster.ray.distanceSqToPoint(target.position);
@@ -384,16 +499,13 @@ export default function ARGame({ gameState, onScoreUpdate, onGameOver }: ARGameP
             aimPoint.copy((closestTarget as THREE.Group).position);
             if (reticleRef.current) {
                 (reticleRef.current.children[0] as THREE.Mesh).material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-                (reticleRef.current.children[1] as THREE.Mesh).material = new THREE.MeshBasicMaterial({ color: 0xff4655, opacity: 0.9, transparent: true });
             }
           } else {
              if (reticleRef.current) {
                 (reticleRef.current.children[0] as THREE.Mesh).material = new THREE.MeshBasicMaterial({ color: 0x00ffff });
-                (reticleRef.current.children[1] as THREE.Mesh).material = new THREE.MeshBasicMaterial({ color: 0xffffff, opacity: 0.5, transparent: true });
              }
           }
 
-          // Trigger
           const triggerDist = Math.hypot(thumbTip.x - indexMCP.x, thumbTip.y - indexMCP.y);
           if (triggerDist < 0.12) {
             if (!isTriggeredRef.current) {
@@ -408,7 +520,6 @@ export default function ARGame({ gameState, onScoreUpdate, onGameOver }: ARGameP
             isTriggeredRef.current = false;
           }
 
-          // Visuals Update
           if (reticleRef.current) {
               reticleRef.current.visible = true;
               reticleRef.current.position.copy(aimPoint);
@@ -428,11 +539,9 @@ export default function ARGame({ gameState, onScoreUpdate, onGameOver }: ARGameP
             generateSound('shoot');
             triggerHaptic(30);
             
-            // Recoil
             recoilRef.current.x = (Math.random() - 0.5) * 0.4;
-            recoilRef.current.y = 0.6; // Upwards kick
+            recoilRef.current.y = 0.6; 
 
-            // Muzzle Flash
             if (muzzleFlashRef.current) {
                 muzzleFlashRef.current.position.copy(handPos).add(new THREE.Vector3(0,0,-1.5));
                 muzzleFlashRef.current.lookAt(aimPoint);
@@ -468,104 +577,20 @@ export default function ARGame({ gameState, onScoreUpdate, onGameOver }: ARGameP
       animationFrameId = requestAnimationFrame(loop);
     };
 
-    // --- Init ---
-    const init = async () => {
-      // Start loop immediately so we don't have a black screen waiting for camera
-      animationFrameId = requestAnimationFrame(loop);
-
-      try {
-        if (!window.Hands) throw new Error("MediaPipe not loaded");
-        
-        const hands = new window.Hands({
-          locateFile: (file: string) => `https://unpkg.com/@mediapipe/hands@${MP_HANDS_VERSION}/${file}`
-        });
-        
-        hands.setOptions({
-          maxNumHands: 1,
-          modelComplexity: 1,
-          minDetectionConfidence: 0.5,
-          minTrackingConfidence: 0.5
-        });
-        
-        hands.onResults((results: any) => {
-           if (results.multiHandLandmarks?.length) {
-               latestLandmarksRef.current = results.multiHandLandmarks[0];
-           } else {
-               latestLandmarksRef.current = null;
-           }
-
-           // Draw Tracking View
-           if (trackingCanvasRef.current && results.image) {
-              const ctx = trackingCanvasRef.current.getContext('2d');
-              if (ctx) {
-                  const w = trackingCanvasRef.current.width;
-                  const h = trackingCanvasRef.current.height;
-                  ctx.save();
-                  ctx.clearRect(0,0,w,h);
-                  ctx.scale(-1, 1);
-                  ctx.translate(-w, 0);
-                  ctx.drawImage(results.image, 0, 0, w, h);
-                  ctx.restore();
-                  
-                  // Stylized Overlay
-                  ctx.fillStyle = "rgba(0, 255, 255, 0.1)";
-                  ctx.fillRect(0,0,w,h);
-                  
-                  if (results.multiHandLandmarks) {
-                      for (const l of results.multiHandLandmarks) {
-                          ctx.save();
-                          ctx.scale(-1, 1);
-                          ctx.translate(-w, 0);
-                          window.drawConnectors(ctx, l, window.HAND_CONNECTIONS, {color: '#00ffff', lineWidth: 2});
-                          ctx.restore();
-                      }
-                  }
-              }
-           }
-        });
-        handsRef.current = hands;
-
-        // Robust Camera Init
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-           let stream;
-           try {
-              stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
-           } catch (e) {
-              console.warn("Front cam failed, trying environment");
-              try {
-                  stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
-              } catch (e2) {
-                  stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-              }
-           }
-           
-           if (videoRef.current) {
-               videoRef.current.srcObject = stream;
-               // Wait for metadata to load to prevent 0x0 size
-               videoRef.current.onloadedmetadata = () => {
-                   videoRef.current?.play().catch(e => console.error("Autoplay blocked", e));
-               };
-           }
-        }
-      } catch (err: any) {
-         console.error(err);
-         setCameraError("VIDEO SENSOR ERROR: " + err.message);
-      }
-    };
-
-    init();
+    // Start rendering immediately
+    animationFrameId = requestAnimationFrame(loop);
 
     // Resize Handler
     const handleResize = () => {
         if (!containerRef.current || !cameraRef.current || !rendererRef.current) return;
-        const w = containerRef.current.clientWidth;
-        const h = containerRef.current.clientHeight;
+        const w = containerRef.current.clientWidth || window.innerWidth;
+        const h = containerRef.current.clientHeight || window.innerHeight;
         cameraRef.current.aspect = w / h;
         cameraRef.current.updateProjectionMatrix();
         rendererRef.current.setSize(w, h);
     };
     window.addEventListener('resize', handleResize);
-    handleResize(); // Force initial size
+    handleResize();
 
     return () => {
       window.removeEventListener('resize', handleResize);
@@ -588,23 +613,36 @@ export default function ARGame({ gameState, onScoreUpdate, onGameOver }: ARGameP
       <div className="absolute top-20 left-10 w-64 h-px bg-white/20 z-10 hidden md:block"></div>
       <div className="absolute bottom-20 right-10 w-64 h-px bg-white/20 z-10 hidden md:block"></div>
       
-      <video ref={videoRef} className="hidden" playsInline muted autoPlay></video>
+      <video ref={videoRef} className="hidden" playsInline muted></video>
       <canvas ref={canvasRef} className="block w-full h-full" />
       
-      {/* Mini Tracking */}
-      <div className="absolute bottom-4 right-4 w-40 h-32 md:w-56 md:h-40 z-20 border border-[#ff4655] bg-black/80 shadow-[0_0_10px_#ff4655]">
-         <canvas ref={trackingCanvasRef} width={320} height={240} className="w-full h-full object-cover tracking-scanline opacity-80" />
-         <div className="absolute bottom-0 w-full bg-[#ff4655] text-black text-[10px] font-bold px-1 font-val">
-            TARGETING SYS: {cameraReady ? 'ONLINE' : 'SEARCHING...'}
-         </div>
-      </div>
-
-      {cameraError && (
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-black/90 border border-red-500 p-6 text-center z-50">
-           <h2 className="text-red-500 font-bold mb-2">SYSTEM ERROR</h2>
-           <p className="text-white text-sm">{cameraError}</p>
+      {/* Init Overlay - Required for Mobile Autoplay */}
+      {!initialized && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm cursor-pointer"
+             onClick={startSystem}>
+            <div className="border-2 border-[#ff4655] p-10 text-center animate-pulse">
+                <h1 className="text-4xl text-[#ff4655] font-val font-bold mb-4">SYSTEM OFFLINE</h1>
+                <p className="text-white text-xl font-val tracking-widest">TAP TO INITIALIZE</p>
+            </div>
         </div>
       )}
+
+      {/* Mini Tracking */}
+      {initialized && (
+        <div className="absolute bottom-4 right-4 w-40 h-32 md:w-56 md:h-40 z-20 border border-[#ff4655] bg-black/80 shadow-[0_0_10px_#ff4655]">
+           <canvas ref={trackingCanvasRef} width={320} height={240} className="w-full h-full object-cover tracking-scanline opacity-80" />
+           <div className="absolute bottom-0 w-full bg-[#ff4655] text-black text-[10px] font-bold px-1 font-val flex justify-between">
+              <span>TARGETING SYS: {cameraReady ? 'ONLINE' : 'SEARCHING...'}</span>
+              <span>FPS: 60</span>
+           </div>
+        </div>
+      )}
+
+      {/* On Screen Log / Error */}
+      <div className="absolute top-2 left-2 z-40 font-mono text-[10px] text-green-400 pointer-events-none opacity-70">
+        {logs.map((l, i) => <div key={i}>{l}</div>)}
+        {cameraError && <div className="text-red-500 font-bold bg-black/50 p-1">{cameraError}</div>}
+      </div>
 
       {floatingTexts.map(ft => (
         <div key={ft.id} className="absolute font-val font-bold text-6xl pointer-events-none"
