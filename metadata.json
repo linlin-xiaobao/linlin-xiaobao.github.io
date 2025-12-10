@@ -1,0 +1,7 @@
+{
+  "name": "无畏契约：小琳特供版",
+  "description": "An AR gesture shooting game where you use your hand as a gun to shoot flying discs.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
