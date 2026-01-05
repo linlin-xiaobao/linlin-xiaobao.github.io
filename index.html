@@ -1,718 +1,673 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
-    <title>无畏契约：小琳特供版</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="./index.css" />
-    <style>
-      @import url('https://fonts.googleapis.com/css2?family=Teko:wght@300;400;500;600;700&display=swap');
-      /* Ensure loading overlay covers everything */
-      .loading-screen { position: fixed; inset: 0; background: #0f1923; z-index: 100; display: flex; justify-content: center; align-items: center; color: white; }
-    </style>
+<!DOCTYPE html><html lang="zh-CN"><head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>心意盲盒</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Sans+SC:wght@400;700&display=swap" rel="stylesheet">
+  
+  <style>
+    /* ---------------------------------- */
+    /* V25 关键帧动画 (100% 稳定) */
+    /* ---------------------------------- */
     
-    <!-- 1. Babel for in-browser compilation -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    /* V10 极光流动 (保持稳定) */
+    @keyframes gradient-flow {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    
+    /* V18 樱花飘落 (保持稳定) */
+    @keyframes sakura-full-animation {
+      0% {
+        transform: translateY(-10vh) translateX(0px) rotate(0deg);
+        opacity: 0;
+      }
+      10% {
+        opacity: 1;
+      }
+      25% {
+        transform: translateY(25vh) translateX(var(--drift-x)) rotate(90deg);
+      }
+      50% {
+        transform: translateY(50vh) translateX(0px) rotate(180deg);
+      }
+      75% {
+        transform: translateY(75vh) translateX(var(--drift-x-neg)) rotate(270deg);
+      }
+      90% {
+        opacity: 1;
+      }
+      100% {
+        transform: translateY(110vh) translateX(0px) rotate(360deg);
+        opacity: 0;
+      }
+    }
 
-    <!-- 2. Import Maps for modules - STRICT REACT 18 VERSIONS TO PREVENT CONFLICTS -->
-    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
-    <script type="importmap">
-{
-  "imports": {
-    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-    "react": "https://esm.sh/react@18.2.0",
-    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
-    "react/": "https://aistudiocdn.com/react@^19.2.1/"
-  }
-}
-</script>
+    /* ---------------------------------- */
+    /* V25 核心 CSS (V10 架构) */
+    /* ---------------------------------- */
+    
+    /* V10 初始弹窗 (保持稳定) */
+    .modal-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);  
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      transition: opacity 0.5s ease-out, visibility 0.5s ease-out;
+      opacity: 1;
+      visibility: visible;
+      z-index: 1000; 
+    }
+    .modal-backdrop[aria-hidden="true"] {
+      opacity: 0;
+      visibility: hidden;  
+      pointer-events: none;  
+    }
+    .modal {
+      background-color: #ffffff;
+      border-radius: 12px;  
+      box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+      width: 90%;
+      max-width: 400px;
+      overflow: hidden;
+      opacity: 1;
+      transform: scale(1);
+      transition: transform 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55), opacity 0.5s ease-in;  
+      z-index: 1001; 
+    }
+    .modal-backdrop[aria-hidden="true"] .modal {
+      transform: scale(0.8);
+      opacity: 0;
+    }
+    .modal .titlebar { display: flex; align-items: center; padding: 15px 20px; border-bottom: 1px solid #eee; background-color: #fcfcfc; }
+    .modal .titlebar .icon { font-size: 24px; margin-right: 10px; }
+    .modal .titlebar .title { font-size: 20px; font-weight: 600; color: #333; }
+    .modal .content { padding: 30px 20px; font-size: 18px; color: #333; text-align: center; line-height: 1.6; }
+    .modal .actions { display: flex; justify-content: center; padding: 20px; border-top: 1px solid #eee; background-color: #fcfcfc; }
+    .modal .btn {  
+      padding: 12px 35px;  
+      border: none;  
+      border-radius: 30px;
+      font-size: 17px;  
+      cursor: pointer;  
+      transition: all 0.3s ease;
+      color: #fff;
+      font-weight: 600;
+      background-image: linear-gradient(135deg, #8a2be2 0%, #ff69b4 100%);
+      box-shadow: 0 5px 15px rgba(138, 43, 226, 0.4);
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    }
+    .modal .btn.primary:hover {
+      background-image: linear-gradient(135deg, #ff69b4 0%, #8a2be2 100%);
+      transform: translateY(-3px) scale(1.05);
+      box-shadow: 0 8px 20px rgba(255, 105, 180, 0.5);
+    }
+    
+    /* --- V25 华丽背景 (100% 安全) --- */
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Noto Sans SC', sans-serif;
+      min-height: 100vh;
+      overflow: hidden;  
+      background-color: #0d0d2b; 
+    }
+    
+    .bg-layer {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none; 
+      transition: opacity 2s ease-in-out; 
+    }
 
-    <!-- 3. MediaPipe Global Scripts -->
-    <script src="https://unpkg.com/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-    <script src="https://unpkg.com/@mediapipe/hands@0.4.1646424915/hands.js" crossorigin="anonymous"></script>
-  <link rel="stylesheet" href="/index.css">
-</head>
-  <body>
-    <div id="root"></div>
+    /* V21 明亮极光 (保持稳定) */
+    #bg-scene-1 {
+      background: linear-gradient(270deg, #fce4ec, #e1bee7, #bbdefb, #e8f5e9, #fce4ec);
+      background-size: 400% 400%;
+      animation: gradient-flow 30s ease-in-out infinite;
+      z-index: 1; 
+      opacity: 1;
+      overflow: hidden; 
+    }
+    #bg-scene-1.hidden {
+      opacity: 0;
+    }
+    
+    /* V19 全局粒子层 (保持稳定) */
+    #particle-field {
+      position: fixed; 
+      width: 100%;
+      height: 100%;
+      top: 0;
+      left: 0;
+      z-index: 5; 
+      pointer-events: none;
+    }
 
-    <!-- MAIN APPLICATION LOGIC -->
-    <script type="text/babel" data-type="module" data-presets="react, typescript">
-      import React, { useState, useEffect, useRef } from 'react';
-      import ReactDOM from 'react-dom/client';
-      import * as THREE from 'three';
+    /* V20 樱花 🌸 粒子 (保持稳定) */
+    .particle {
+      position: absolute; 
+      will-change: transform, opacity;
+      animation: 
+        sakura-full-animation var(--fall-dur) linear var(--delay) infinite;
+      
+      line-height: 1;
+      user-select: none; 
+    }
+    
+    /* 场景 2: 明亮极光 (V12 稳定方案) */
+    #bg-scene-2 {
+      background: linear-gradient(270deg, #fce4ec, #e1bee7, #bbdefb, #e8f5e9, #fce4ec);
+      background-size: 400% 400%;
+      animation: gradient-flow 30s ease-in-out infinite;
+      z-index: 2; 
+      opacity: 0; 
+      overflow: hidden;
+    }
+    #bg-scene-2.visible {
+      opacity: 1; 
+    }
 
-      // --- UTILS: Sound ---
-      let audioCtx = null;
-      const getCtx = () => {
-        if (!audioCtx) {
-          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        }
-        return audioCtx;
-      };
+    /* V23 精细化 SVG (保持稳定) */
+    #peppa-pig-svg {
+      position: absolute;
+      bottom: 15px; 
+      left: 50%;
+      transform: translateX(-50%);
+      width: 180px; 
+      height: auto; 
+      z-index: 3; 
+      pointer-events: none;
+      filter: drop-shadow(0 5px 10px rgba(0,0,0,0.2)); 
+    }
+    #peppa-pig-svg .skin { fill: #FFDAB9; stroke: #E66A9B; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+    #peppa-pig-svg .dress { fill: #FF69B4; stroke: #E66A9B; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+    #peppa-pig-svg .eye { fill: white; stroke: #333; stroke-width: 1; }
+    #peppa-pig-svg .pupil { fill: #333; stroke: none; }
+    #peppa-pig-svg .cheek { fill: #FFB6C1; stroke: #E66A9B; stroke-width: 1.5; }
+    #peppa-pig-svg .mouth { fill: none; stroke: #E66A9B; stroke-width: 2.5; stroke-linecap: round; }
+    #peppa-pig-svg .nose-hole { fill: #E66A9B; stroke: none; }
+    #peppa-pig-svg .shoes { fill: #333333; stroke: #333333; stroke-width: 1; }
+    #peppa-pig-svg .tail { fill: none; stroke: #E66A9B; stroke-width: 2.5; stroke-linecap: round; }
 
-      const generateSound = (type) => {
-        const ctx = getCtx();
-        if (ctx.state === 'suspended') ctx.resume();
 
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        const now = ctx.currentTime;
+    /* ---------------------------------- */
+    /* 场景二 (心意之墙) (V24 聚焦修复) */
+    /* ---------------------------------- */
+    #popup-layer {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: none;  
+      z-index: 900; 
+      overflow: hidden;  
+      /* V23 遮罩过渡 (保持稳定) */
+      transition: background-color 0.4s ease;
+    }
+    .popup-message {
+      position: absolute;
+      border-radius: 15px;  
+      background-color: rgba(255, 255, 255, 0.7);  
+      -webkit-backdrop-filter: blur(10px) saturate(120%);
+      backdrop-filter: blur(10px) saturate(120%);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+      padding: 15px 25px;
+      width: auto;
+      max-width: 280px;  
+      text-align: center;
+      cursor: pointer;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0) rotate(0deg);
+      opacity: 0;
+      
+      /* V23 初始爆发 (保持稳定) */
+      transition: all 0.8s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+      z-index: 901; 
+    }
+    .popup-message.burst-in {
+      top: var(--final-top);
+      left: var(--final-left);
+      transform: translate(-50%, -50%) scale(1) rotate(var(--final-rotate));
+      opacity: 0.8;  
+    }
+    
+    /* V20 :hover (保持稳定) */
+    .popup-message:hover {
+      opacity: 1;
+      z-index: 99998 !important; 
+      transform: translate(-50%, -50%) scale(1.1) rotate(var(--final-rotate)) !important;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    }
+    
+    /* V23 遮罩 (保持稳定) */
+    #popup-layer.is-focused {
+      background-color: rgba(0, 0, 0, 0.3);
+    }
+    
+    /* V24 修复 (Bug 1): 100% 修复“不一致” 和 “那么淡” */
+    #popup-layer.is-focused .popup-message:not(.focused) {
+      transition: opacity 0.4s ease, transform 0.4s ease;
+      
+      /* V24 修复: 0.2 (修复 "那么淡") */
+      opacity: 0.2 !important; 
+      /* V24 修复: !important (修复 "不一致" Bug) */
+      
+      pointer-events: none;  
+    }
+    
+    /* V23 聚焦 (保持稳定) */
+    .popup-message.focused {
+      top: 50% !important;  
+      left: 50% !important;
+      transform: translate(-50%, -50%) scale(1.2) rotate(0deg) !important;  
+      opacity: 1;
+      z-index: 99999 !important; 
+    }
+    
+    .popup-message .icon {
+      font-size: 32px;
+      margin-bottom: 10px;
+      display: block;
+    }
+    .popup-message .content {  
+      font-size: 24px;  
+      line-height: 1.6;  
+      font-family: 'Ma Shan Zheng', cursive;  
+      color: #333;
+    }
+  </style>
 
-        switch (type) {
-          case 'shoot':
-            osc.type = 'sawtooth';
-            osc.frequency.setValueAtTime(880, now);
-            osc.frequency.exponentialRampToValueAtTime(110, now + 0.15);
-            gain.gain.setValueAtTime(0.3, now);
-            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
-            osc.start(now);
-            osc.stop(now + 0.15);
-            break;
-          case 'hit':
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(1200, now);
-            osc.frequency.exponentialRampToValueAtTime(2000, now + 0.05);
-            gain.gain.setValueAtTime(0.5, now);
-            gain.gain.linearRampToValueAtTime(0, now + 0.1);
-            
-            // Crunch
-            const osc2 = ctx.createOscillator();
-            const gain2 = ctx.createGain();
-            osc2.type = 'square';
-            osc2.frequency.setValueAtTime(100, now);
-            osc2.connect(gain2);
-            gain2.connect(ctx.destination);
-            gain2.gain.setValueAtTime(0.2, now);
-            gain2.gain.linearRampToValueAtTime(0, now + 0.05);
-            osc2.start(now);
-            osc2.stop(now + 0.05);
-            
-            osc.start(now);
-            osc.stop(now + 0.1);
-            break;
-          case 'miss':
-            osc.type = 'triangle';
-            osc.frequency.setValueAtTime(150, now);
-            osc.frequency.linearRampToValueAtTime(50, now + 0.2);
-            gain.gain.setValueAtTime(0.5, now);
-            gain.gain.linearRampToValueAtTime(0, now + 0.2);
-            osc.start(now);
-            osc.stop(now + 0.2);
-            break;
-          case 'ui':
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(800, now);
-            osc.frequency.setValueAtTime(1200, now + 0.05);
-            gain.gain.setValueAtTime(0.1, now);
-            gain.gain.linearRampToValueAtTime(0, now + 0.1);
-            osc.start(now);
-            osc.stop(now + 0.1);
-            break;
-        }
-      };
+  </head><body>
+  
+  <div class="bg-layer" id="bg-scene-1"></div>
+  <div class="bg-layer" id="bg-scene-2">
+    
+    <svg id="peppa-pig-svg" viewBox="-10 0 120 105" xmlns="http://www.w.org/2000/svg">
+      <g id="peppa-v23">
+        <path class="tail" d="M 68,85 Q 75,80 75,85 Q 75,90 68,85" />
+        <path class="skin" d="M 45,90 L 45,100" />
+        <path class="skin" d="M 55,90 L 55,100" />
+        <ellipse class="shoes" cx="45" cy="100" rx="3" ry="2" />
+        <ellipse class="shoes" cx="55" cy="100" rx="3" ry="2" />
+        <path class="dress" d="M 35,60 C 30,80 30,90 30,90 L 70,90 C 70,90 70,80 65,60 Z" />
+        <path class="skin" d="M 33,65 L 20,70" />
+        <path class="skin" d="M 67,65 L 80,70" />
+        <path class="skin" d="M 50,15 C 20,15 5,40 5,60 C 5,80 30,95 50,85 C 75,80 95,65 95,45 C 95,25 75,10 50,15 Z" />
+        <path class="skin" d="M 5,60 C -5,60 -5,50 5,50 C 15,50 15,60 5,60 Z" />
+        <path class="skin" d="M 40,15 C 35,5 30,15 30,15" />
+        <path class="skin" d="M 50,12 C 55,2 60,12 60,12" />
+        <circle cx="42" cy="40" r="5" class="eye" />
+        <circle cx="43" cy="40" r="2" class="pupil" />
+        <circle cx="58" cy="40" r="5" class="eye" />
+        <circle cx="59" cy="40" r="2" class="pupil" />
+        <circle cx="8" cy="55" r="2" class="nose-hole" />
+        <circle cx="15" cy="55" r="2" class="nose-hole" />
+        <circle cx="75" cy="55" r="10" class="cheek" />
+        <path class="mouth" d="M 40,70 Q 50,75 60,70" />
+      </g>
+    </svg>
+    
+  </div>
+  
+  <div id="particle-field"></div>
 
-      // --- COMPONENT: ARGame ---
-      const MP_HANDS_VERSION = '0.4.1646424915';
+  <div class="modal-backdrop" id="start-backdrop" aria-hidden="false">
+    <div class="modal" id="initial-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="titlebar">
+        <span class="icon">✨</span>
+        <span class="title" id="modal-title">心意盲盒</span>
+      </div>
+      <div class="content">Hi，小琳宝宝：<br>为你打开这片温柔的星海...</div>
+      <div class="actions">
+        <button class="btn primary" id="confirm-btn" autofocus>开启</button>
+      </div>
+    </div>
+  </div>
 
-      function ARGame({ gameState, onScoreUpdate, onGameOver }) {
-        const containerRef = useRef(null);
-        const videoRef = useRef(null);
-        const canvasRef = useRef(null);
-        const trackingCanvasRef = useRef(null);
+  <div id="popup-layer" aria-live="polite">
+    </div>
+
+  <audio id="bgMusic" loop preload="auto">
+    <source src="https://sf5-hl-cdn-tos.douyinstatic.com/obj/ies-music/7499771397531503370.mp3" type="audio/mpeg">
+  </audio>
+  <audio id="clickSound" preload="auto">
+    <source src="https://cdn.pixabay.com/download/audio/2021/08/04/audio_349d3e8e19.mp3?filename=button-click-sound-effect-153308.mp3" type="audio/mpeg">
+  </audio>
+  <audio id="burstSound" preload="auto">
+    <source src="https://cdn.pixabay.com/download/audio/2022/05/27/audio_651917f6fc.mp3?filename=magic-chime-01-112704.mp3" type="audio/mpeg">
+  </audio>
+
+  <script>
+    // --- 1. 获取所有元素 (100% 安全获取) ---
+    const bgMusic = document.getElementById('bgMusic');
+    const clickSound = document.getElementById('clickSound');
+    const burstSound = document.getElementById('burstSound');
+    const confirmBtn = document.getElementById('confirm-btn');
+    const startBackdrop = document.getElementById('start-backdrop');
+    const initialModal = document.getElementById('initial-modal');  
+    const popupLayer = document.getElementById('popup-layer');
+
+    const bgScene1 = document.getElementById('bg-scene-1');
+    const bgScene2 = document.getElementById('bg-scene-2');
+    const particleField = document.getElementById('particle-field');
+    
+    // V20 Z-Index 仲裁器 (保持)
+    let currentTopZ = 901;
+    
+    /* V24 全局常量 (V23 保持稳定) */
+    const MAX_CONCURRENT_RECYCLES = 3;  
+    const RECYCLE_WORKER_SLEEP_MIN = 1000; 
+    const RECYCLE_WORKER_SLEEP_MAX = 2000; 
+    const RECYCLE_ANIM_DURATION = 2000;    
+    const FOCUS_ANIM_DURATION = 400;
+
+    // --- 2. 消息数据 (V15 语法已修复, 保持稳定) ---
+    const messages = [
+      { icon: '🥰', text: '“今天... 我又想了你 100 次。”' },
+      { icon: '🌟', text: '“你的笑容，是我一整天的能量来源。”' },
+      { icon: '💖', text: '“猜猜我的心在哪？... 在你那边。”' },
+      { icon: '🌸', text: '“遇见你之后，我才发现星星会跑到我眼睛里。”' },
+      { icon: '🍀', text: '“希望你今天也是个开心的小小朋友。”' },
+      { icon: '✨', text: '“别太累啦，我会心疼的。”' },
+      { icon: '🌈', text: '“你猜，‘可爱’的近义词是什么？... 是你。”' },
+      { icon: '💫', text: '“世界很大，但我只想和你待在一起。”' },
+      { icon: '🎁', text: '“你是我打开过的，最棒的礼物。”' },
+      { icon: '❤️', text: '“不只是今天... 而是每一天，我都... (你懂的)”' },
+      { icon: '🌙', text: '“晚安，愿你梦里有我的温柔。”' },
+      { icon: '☀️', text: '“早安，新的一天也想你。”' },
+      { icon: '☕', text: '“记得休息一下，我陪你。”' },
+      { icon: '🍬', text: '“你比糖果还甜，甜到我心里了。”' },
+      { icon: '🎵', text: '“听到这首歌，我又想起了你。”' },
+      { icon: '🎀', text: '“你就是我最珍贵的那个‘小礼盒’。”' },
+      { icon: '💭', text: '“悄悄告诉你，我刚在想你呢。”' },
+      { icon: '🥳', text: '“有你在，每天都是值得庆祝的好日子。”' },
+      { icon: '🤗', text: '“想给你一个大大的拥抱，现在就想。”' },
+      { icon: '💌', text: '“这封心意，只为你一人而写。”' }
+    ];
+
+    // --- 3. 音频播放 (V10 安全方案) ---
+    function playMusic() {
+      if (bgMusic && bgMusic.paused) {  
+        bgMusic.volume = 0.4;  
+        bgMusic.play().catch(e => console.warn("背景音乐播放失败:", e));
+      }
+    }
+
+    function playSound(audioElement, volume = 0.6) {
+      if (audioElement) {
+        const sound = audioElement.cloneNode();
+        sound.volume = volume;
+        sound.play().catch(e => console.warn("音效播放失败:", e));
+      }
+    }
+
+    // --- 4. 核心流程：点击按钮 (V23 启动 4.4s 爆发) ---
+    if (confirmBtn && startBackdrop && popupLayer && bgScene1 && bgScene2) {
+      
+      confirmBtn.addEventListener('click', () => {
         
-        // Game Logic Refs
-        const sceneRef = useRef(null);
-        const cameraRef = useRef(null);
-        const rendererRef = useRef(null);
-        const targetsRef = useRef([]);
-        const laserRef = useRef(null);
-        const reticleRef = useRef(null);
-        const muzzleFlashRef = useRef(null);
-        const droneTextureRef = useRef(null);
+        playSound(clickSound);  
+        startBackdrop.setAttribute('aria-hidden', 'true');  
         
-        const scoreRef = useRef(0);
-        const isTriggeredRef = useRef(false);
-        const lastShotTimeRef = useRef(0);
-        const latestLandmarksRef = useRef(null);
-        const handsRef = useRef(null);
-        
-        // Processing State
-        const processingRef = useRef(false);
-        const lastProcessTimeRef = useRef(0);
-        
-        // State
-        const [initialized, setInitialized] = useState(false);
-        const [logs, setLogs] = useState([]);
-        const [cameraError, setCameraError] = useState(null);
-        const [cameraReady, setCameraReady] = useState(false);
-        const [floatingTexts, setFloatingTexts] = useState([]);
-        const recoilRef = useRef({ x: 0, y: 0, decay: 0.85 });
+        setTimeout(() => {
+          startBackdrop.style.display = 'none';  
+          popupLayer.style.display = 'block';  
+          playMusic(); 
 
-        const log = (msg) => {
-          console.log(msg);
-          setLogs(prev => [msg, ...prev].slice(0, 5));
-        };
+          // V12 "Cross-Fade" (保持稳定)
+          bgScene1.classList.add('hidden');
+          bgScene2.classList.add('visible');
 
-        const addFloatingText = (x, y, text, type) => {
-          const id = Date.now() + Math.random();
-          setFloatingTexts(prev => [...prev, { id, x, y, text, type }]);
-          setTimeout(() => setFloatingTexts(prev => prev.filter(ft => ft.id !== id)), 800);
-        };
-
-        const createDroneTexture = () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = 256; canvas.height = 256;
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-                const grad = ctx.createRadialGradient(128,128,40, 128,128,120);
-                grad.addColorStop(0, 'rgba(0, 255, 255, 1)');
-                grad.addColorStop(0.5, 'rgba(0, 100, 100, 0.5)');
-                grad.addColorStop(1, 'rgba(0,0,0,0)');
-                ctx.fillStyle = grad;
-                ctx.fillRect(0,0,256,256);
-                
-                ctx.beginPath();
-                ctx.arc(128, 128, 40, 0, Math.PI * 2);
-                ctx.fillStyle = '#ffffff';
-                ctx.fill();
-                
-                ctx.strokeStyle = '#ff4655';
-                ctx.lineWidth = 8;
-                ctx.beginPath();
-                ctx.arc(128, 128, 60, 0, Math.PI * 1.5);
-                ctx.stroke();
-
-                ctx.strokeStyle = '#00ffff';
-                ctx.lineWidth = 4;
-                ctx.beginPath();
-                ctx.arc(128, 128, 75, Math.PI, Math.PI * 2.5);
-                ctx.stroke();
-            }
-            const tex = new THREE.CanvasTexture(canvas);
-            droneTextureRef.current = tex;
-            return tex;
-        };
-
-        const startSystem = async () => {
-          if (initialized) return;
-          setInitialized(true);
-          log("System Initializing...");
-
-          try { generateSound('ui'); } catch(e) {}
-
-          try {
-              if (!window.Hands) {
-                  log("Waiting for MediaPipe...");
-                  await new Promise(r => setTimeout(r, 1000));
-                  if (!window.Hands) throw new Error("MediaPipe script failed to load");
-              }
-              
-              const hands = new window.Hands({
-                locateFile: (file) => `https://unpkg.com/@mediapipe/hands@${MP_HANDS_VERSION}/${file}`
-              });
-              
-              hands.setOptions({
-                maxNumHands: 1,
-                modelComplexity: 0, // Lower complexity for mobile speed
-                minDetectionConfidence: 0.5,
-                minTrackingConfidence: 0.5
-              });
-              
-              hands.onResults((results) => {
-                 latestLandmarksRef.current = results.multiHandLandmarks?.length ? results.multiHandLandmarks[0] : null;
-              });
-              handsRef.current = hands;
-              log("AI Core Online");
-          } catch (e) {
-              log("AI ERROR: " + e.message);
-              setCameraError("AI CORE FAILED");
-          }
-
-          if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-             let stream;
-             log("Requesting Sensors...");
-             try {
-                stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { 
-                        facingMode: 'user', 
-                        width: { ideal: 640 }, 
-                        height: { ideal: 480 } 
-                    }, 
-                    audio: false 
-                });
-             } catch (e) {
-                try {
-                    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
-                } catch (e2) {
-                    try {
-                        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                    } catch(e3) {
-                        log("FATAL: No Sensors");
-                        setCameraError("NO CAMERA FOUND");
-                        return;
-                    }
-                }
-             }
-             
-             if (videoRef.current && stream) {
-                 videoRef.current.srcObject = stream;
-                 // Force attributes to ensure mobile play
-                 videoRef.current.setAttribute('playsinline', 'true');
-                 videoRef.current.setAttribute('webkit-playsinline', 'true');
-                 videoRef.current.muted = true;
-
-                 const tryPlay = () => {
-                     videoRef.current.play()
-                      .then(() => log("Video Feed Active"))
-                      .catch(e => {
-                          log("Play Blocked: " + e.message);
-                          // Retry on interaction if needed
-                          setTimeout(tryPlay, 1000);
-                      });
-                 };
-                 videoRef.current.onloadedmetadata = tryPlay;
-             }
-          } else {
-              setCameraError("BROWSER UNSUPPORTED");
-          }
-        };
-
-        useEffect(() => {
-          if (!containerRef.current || !canvasRef.current) return;
-
-          let animationFrameId;
-          let clock = new THREE.Clock();
-
-          const width = containerRef.current.clientWidth || window.innerWidth;
-          const height = containerRef.current.clientHeight || window.innerHeight;
-
-          const scene = new THREE.Scene();
-          scene.background = new THREE.Color(0x0f1923);
-
-          const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
-          scene.add(ambientLight);
-          const dirLight = new THREE.DirectionalLight(0xff4655, 3);
-          dirLight.position.set(-5, 5, 5);
-          scene.add(dirLight);
-
-          const aspect = width / height;
-          const threeCamera = new THREE.PerspectiveCamera(60, aspect, 0.1, 1000);
-          threeCamera.position.z = 10; 
-
-          const renderer = new THREE.WebGLRenderer({ 
-            canvas: canvasRef.current, 
-            alpha: true,
-            antialias: true
-          });
-          renderer.setSize(width, height);
-          renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-
-          sceneRef.current = scene;
-          cameraRef.current = threeCamera;
-          rendererRef.current = renderer;
+          // V23 启动 4.4s 爆发 (保持稳定)
+          showMessagesBurst();
           
-          createDroneTexture();
+          // V23 启动调度器 (保持稳定)
+          setTimeout(launchRecycleWorkers, 5000); // 4.4s + 0.6s buffer
 
-          const gridHelper = new THREE.GridHelper(200, 50, 0x00ffff, 0x1a2b3c);
-          gridHelper.position.y = -20;
-          gridHelper.material.transparent = true;
-          gridHelper.material.opacity = 0.15;
-          scene.add(gridHelper);
-          
-          const laserMat = new THREE.LineBasicMaterial({ color: 0xff4655, linewidth: 2, transparent: true, opacity: 0.8 });
-          const laserGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-100)]);
-          const laserLine = new THREE.Line(laserGeo, laserMat);
-          laserLine.frustumCulled = false;
-          scene.add(laserLine);
-          laserRef.current = laserLine;
+        }, 500); 
+        
+      }, { once: true });
+      
+    } else {
+      // V10 最终防线
+      alert("网页加载失败了！(关键元素丢失) \n\n请刷新页面重试。");
+    }
 
-          const flashGeo = new THREE.PlaneGeometry(3, 3);
-          const canvas = document.createElement('canvas');
-          canvas.width = 64; canvas.height = 64;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-              const grad = ctx.createRadialGradient(32,32,0, 32,32,32);
-              grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
-              grad.addColorStop(0.3, 'rgba(255, 200, 100, 0.8)');
-              grad.addColorStop(1, 'rgba(255, 70, 85, 0)'); 
-              ctx.fillStyle = grad;
-              ctx.fillRect(0,0,64,64);
-          }
-          const flashTex = new THREE.CanvasTexture(canvas);
-          const flashMat = new THREE.MeshBasicMaterial({ 
-              map: flashTex, transparent: true, opacity: 0, depthTest: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide
-          });
-          const muzzleFlash = new THREE.Mesh(flashGeo, flashMat);
-          muzzleFlash.visible = false;
-          scene.add(muzzleFlash);
-          muzzleFlashRef.current = muzzleFlash;
+    // --- 5. 华丽的“爆发”效果 (V23 4.4s 爆发) ---
+    const activeCards = []; 
+    function showMessagesBurst() {
+      if (!popupLayer) return;
+      
+      popupLayer.addEventListener('click', (e) => {
+        if (e.target === popupLayer) {
+          removeFocus();
+        }
+      });
 
-          const reticleGroup = new THREE.Group();
-          reticleGroup.add(new THREE.Mesh(new THREE.CircleGeometry(0.08, 16), new THREE.MeshBasicMaterial({ color: 0x00ffff })));
-          reticleGroup.add(new THREE.Mesh(new THREE.RingGeometry(0.4, 0.45, 32), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 })));
-          scene.add(reticleGroup);
-          reticleRef.current = reticleGroup;
+      messages.forEach((msg, index) => {
+        
+        const popup = document.createElement('div');
+        popup.className = 'popup-message';
+        
+        popup.innerHTML = `
+          <span class="icon">${msg.icon}</span>
+          <div class="content">${msg.text}</div>
+        `;
+        
+        // V24 修复 (Bug 2): 初始爆发范围 10%-90% (保持稳定)
+        const randomTop = Math.random() * 80 + 10; 
+        const randomLeft = Math.random() * 80 + 10;
+        const randomRot = Math.random() * 40 - 20;
+        
+        popup.style.setProperty('--final-top', `${randomTop}%`);
+        popup.style.setProperty('--final-left', `${randomLeft}%`);
+        popup.style.setProperty('--final-rotate', `${randomRot}deg`);
+        
+        popup.addEventListener('click', (e) => {
+          e.stopPropagation();  
+          toggleFocus(popup);
+        });
+        
+        /* V23 4.4s 爆发 (保持稳定) */
+        const burstClump = (Math.floor(Math.random() * 5)) * 1000; 
+        const microDelay = Math.random() * 400; 
+        const totalDelay = burstClump + microDelay; 
 
-          let videoTexture = null;
-
-          const spawnTarget = () => {
-            const group = new THREE.Group();
-            if (droneTextureRef.current) {
-                const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: droneTextureRef.current, color: 0xffffff, blending: THREE.AdditiveBlending }));
-                sprite.scale.set(3, 3, 1);
-                group.add(sprite);
-            }
-            group.add(new THREE.Mesh(new THREE.TorusGeometry(1.2, 0.05, 8, 32), new THREE.MeshBasicMaterial({ color: 0xff4655, wireframe: true })));
-
-            const angle = (Math.random() - 0.5) * Math.PI * 1.5; 
-            group.position.set(Math.sin(angle) * 25, (Math.random() - 0.5) * 12, -30 + (Math.random() * 5));
-            group.userData = {
-              velocity: new THREE.Vector3(0,0,1).applyEuler(new THREE.Euler(0, -angle, 0)).multiplyScalar(5 + Math.random() * 4), 
-              active: true,
-              rotSpeed: (Math.random() - 0.5) * 5
-            };
-            scene.add(group);
-            targetsRef.current.push(group);
-          };
-
-          const loop = () => {
-            if (!sceneRef.current) return;
-            const dt = clock.getDelta();
-            const elapsed = clock.getElapsedTime();
-            const now = Date.now();
-
-            // --- VIDEO & TRACKING UPDATE ---
-            if (videoRef.current && videoRef.current.readyState >= 2) {
-               // 1. Update ThreeJS Background
-               if (!videoTexture) {
-                   videoTexture = new THREE.VideoTexture(videoRef.current);
-                   videoTexture.colorSpace = THREE.SRGBColorSpace;
-               }
-               if (videoTexture) {
-                 // Ensure background is set
-                 if (!scene.background || !scene.background.isTexture) {
-                    scene.background = videoTexture;
-                    setCameraReady(true);
-                 }
-               }
-
-               // 2. Draw Tracking View (Force update every frame)
-               if (trackingCanvasRef.current) {
-                  const ctx = trackingCanvasRef.current.getContext('2d');
-                  if (ctx) {
-                      const w = trackingCanvasRef.current.width;
-                      const h = trackingCanvasRef.current.height;
-                      
-                      ctx.save();
-                      ctx.scale(-1, 1);
-                      ctx.translate(-w, 0);
-                      ctx.drawImage(videoRef.current, 0, 0, w, h);
-                      ctx.restore();
-                      
-                      ctx.fillStyle = "rgba(0, 255, 255, 0.1)";
-                      ctx.fillRect(0,0,w,h);
-                      
-                      const l = latestLandmarksRef.current;
-                      if (l && window.drawConnectors) {
-                           ctx.save();
-                           ctx.scale(-1, 1);
-                           ctx.translate(-w, 0);
-                           window.drawConnectors(ctx, l, window.HAND_CONNECTIONS, {color: '#00ffff', lineWidth: 2});
-                           ctx.restore();
-                      }
-                  }
-               }
-
-               // 3. Send to AI (Throttled)
-               // Auto-recover if stuck for > 2s
-               if (processingRef.current && (now - lastProcessTimeRef.current > 2000)) {
-                   processingRef.current = false;
-               }
-
-               // Process every ~80ms (12 FPS) - Balance between smoothness and performance
-               if (handsRef.current && !processingRef.current && (now - lastProcessTimeRef.current > 80)) { 
-                  processingRef.current = true;
-                  lastProcessTimeRef.current = now;
-                  handsRef.current.send({image: videoRef.current})
-                    .then(() => { processingRef.current = false; })
-                    .catch(() => { processingRef.current = false; });
-               }
-            }
-            // -------------------------------
-
-            recoilRef.current.x *= recoilRef.current.decay;
-            recoilRef.current.y *= recoilRef.current.decay;
-            cameraRef.current.rotation.x = recoilRef.current.y * 0.1;
-            cameraRef.current.rotation.y = recoilRef.current.x * 0.1;
-
-            if (gameState === 1) { // Playing
-              if (targetsRef.current.length < 4 && Math.random() < 0.05) spawnTarget();
-
-              for (let i = targetsRef.current.length - 1; i >= 0; i--) {
-                const target = targetsRef.current[i];
-                if (target.userData.active) {
-                  target.position.add(target.userData.velocity.clone().multiplyScalar(dt));
-                  target.children[1].rotation.x += dt * 2;
-                  target.children[1].rotation.y += dt * target.userData.rotSpeed;
-                  target.scale.setScalar(1 + Math.sin(elapsed * 5) * 0.1);
-
-                  if (target.position.z > 5) {
-                    scene.remove(target);
-                    targetsRef.current.splice(i, 1);
-                    generateSound('miss');
-                    
-                    const vector = target.position.clone().project(cameraRef.current);
-                    const x = (vector.x * .5 + .5) * containerRef.current.clientWidth;
-                    const y = (-(vector.y * .5) + .5) * containerRef.current.clientHeight;
-                    addFloatingText(x, y, "MISS", "miss");
-                  }
-                }
-              }
-
-              const landmarks = latestLandmarksRef.current;
-              let isShooting = false;
-              
-              if (landmarks) {
-                const indexTip = landmarks[8];
-                const indexMCP = landmarks[5];
-                const thumbTip = landmarks[4];
-                const ndcX = -(1 - indexTip.x) * 2 + 1;
-                const ndcY = -(indexTip.y * 2 - 1);
-                
-                const raycaster = new THREE.Raycaster();
-                raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), cameraRef.current);
-                
-                const vec = new THREE.Vector3(ndcX, ndcY, 0.5).unproject(cameraRef.current);
-                vec.sub(cameraRef.current.position).normalize();
-                const handPos = cameraRef.current.position.clone().add(vec.multiplyScalar(3));
-
-                let aimPoint = raycaster.ray.origin.clone().add(raycaster.ray.direction.multiplyScalar(50));
-                let closestTarget = null;
-                let minDist = 3.0; 
-
-                targetsRef.current.forEach(target => {
-                  const dist = raycaster.ray.distanceSqToPoint(target.position);
-                  if (dist < minDist) { minDist = dist; closestTarget = target; }
-                });
-
-                if (closestTarget) {
-                  aimPoint.copy(closestTarget.position);
-                  reticleRef.current.children[0].material.color.setHex(0xff0000);
-                } else {
-                   reticleRef.current.children[0].material.color.setHex(0x00ffff);
-                }
-
-                if (Math.hypot(thumbTip.x - indexMCP.x, thumbTip.y - indexMCP.y) < 0.12) {
-                  if (!isTriggeredRef.current) {
-                     if (Date.now() - lastShotTimeRef.current > 120) { isShooting = true; lastShotTimeRef.current = Date.now(); }
-                     isTriggeredRef.current = true;
-                  }
-                } else {
-                  isTriggeredRef.current = false;
-                }
-
-                reticleRef.current.visible = true;
-                reticleRef.current.position.copy(aimPoint);
-                reticleRef.current.lookAt(cameraRef.current.position);
-                reticleRef.current.scale.setScalar(cameraRef.current.position.distanceTo(aimPoint) * 0.03);
-
-                const pos = laserRef.current.geometry.attributes.position.array;
-                pos[0] = handPos.x; pos[1] = handPos.y - 0.2; pos[2] = handPos.z;
-                pos[3] = aimPoint.x; pos[4] = aimPoint.y; pos[5] = aimPoint.z;
-                laserRef.current.geometry.attributes.position.needsUpdate = true;
-
-                if (isShooting) {
-                  generateSound('shoot');
-                  if (navigator.vibrate) navigator.vibrate(30);
-                  recoilRef.current.x = (Math.random() - 0.5) * 0.4;
-                  recoilRef.current.y = 0.6; 
-
-                  muzzleFlashRef.current.position.copy(handPos).add(new THREE.Vector3(0,0,-1.5));
-                  muzzleFlashRef.current.lookAt(aimPoint);
-                  muzzleFlashRef.current.visible = true;
-                  setTimeout(() => { if(muzzleFlashRef.current) muzzleFlashRef.current.visible = false; }, 60);
-
-                  if (closestTarget) {
-                     scene.remove(closestTarget);
-                     targetsRef.current = targetsRef.current.filter(t => t !== closestTarget);
-                     scoreRef.current += 1;
-                     onScoreUpdate(scoreRef.current);
-                     generateSound('hit');
-                     if (navigator.vibrate) navigator.vibrate([30, 50]);
-                     
-                     const vector = closestTarget.position.clone().project(cameraRef.current);
-                     const x = (vector.x * .5 + .5) * containerRef.current.clientWidth;
-                     const y = (-(vector.y * .5) + .5) * containerRef.current.clientHeight;
-                     addFloatingText(x, y, "DESTROYED", "hit");
-                  }
-                }
-              } else {
-                 reticleRef.current.visible = false;
-                 laserRef.current.geometry.attributes.position.array.fill(0);
-                 laserRef.current.geometry.attributes.position.needsUpdate = true;
-              }
-            }
-
-            renderer.render(scene, cameraRef.current);
-            animationFrameId = requestAnimationFrame(loop);
-          };
-
-          animationFrameId = requestAnimationFrame(loop);
-
-          const handleResize = () => {
-              if (!containerRef.current || !cameraRef.current) return;
-              const w = containerRef.current.clientWidth || window.innerWidth;
-              const h = containerRef.current.clientHeight || window.innerHeight;
-              cameraRef.current.aspect = w / h;
-              cameraRef.current.updateProjectionMatrix();
-              rendererRef.current.setSize(w, h);
-          };
-          window.addEventListener('resize', handleResize);
-          handleResize();
-
-          return () => {
-            window.removeEventListener('resize', handleResize);
-            cancelAnimationFrame(animationFrameId);
-            if(handsRef.current) handsRef.current.close();
-            if(sceneRef.current) sceneRef.current.clear();
-            if(rendererRef.current) rendererRef.current.dispose();
-            const s = videoRef.current?.srcObject;
-            s?.getTracks().forEach(t => t.stop());
-          };
-        }, [gameState, onScoreUpdate]);
-
-        return (
-          <div ref={containerRef} className="absolute inset-0 w-full h-full bg-[#0f1923] overflow-hidden">
-            <div className="absolute inset-0 pointer-events-none z-10 opacity-60" style={{ background: 'radial-gradient(circle at center, transparent 30%, #000 120%)' }}></div>
-            <div className="absolute top-20 left-10 w-64 h-px bg-white/20 z-10 hidden md:block"></div>
-            <div className="absolute bottom-20 right-10 w-64 h-px bg-white/20 z-10 hidden md:block"></div>
-            
-            {/* 
-                CRITICAL FIX: 
-                On Mobile, a display:none video will STOP processing frames.
-                An opacity:0 video might also be optimized away.
-                We put it behind everything (z-index -2) with full size.
-            */}
-            <video 
-              ref={videoRef} 
-              playsInline 
-              muted 
-              autoPlay 
-              style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: -2, opacity: 0.01, objectFit: 'cover' }}
-            ></video>
-            
-            <canvas ref={canvasRef} className="block w-full h-full" />
-            
-            {!initialized && (
-              <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm cursor-pointer" onClick={startSystem}>
-                  <div className="border-2 border-[#ff4655] p-10 text-center animate-pulse">
-                      <h1 className="text-4xl text-[#ff4655] font-val font-bold mb-4">SYSTEM OFFLINE</h1>
-                      <p className="text-white text-xl font-val tracking-widest">TAP TO INITIALIZE</p>
-                  </div>
-              </div>
-            )}
-
-            {initialized && (
-              <div className="absolute bottom-4 right-4 w-40 h-32 md:w-56 md:h-40 z-20 border border-[#ff4655] bg-black/80 shadow-[0_0_10px_#ff4655]">
-                 <canvas ref={trackingCanvasRef} width={320} height={240} className="w-full h-full object-cover tracking-scanline opacity-80" />
-                 <div className="absolute bottom-0 w-full bg-[#ff4655] text-black text-[10px] font-bold px-1 font-val flex justify-between">
-                    <span>TARGETING SYS: {cameraReady ? 'ONLINE' : 'SEARCHING...'}</span>
-                    <span>FPS: 60</span>
-                 </div>
-              </div>
-            )}
-
-            <div className="absolute top-2 left-2 z-40 font-mono text-[10px] text-green-400 pointer-events-none opacity-70">
-              {logs.map((l, i) => <div key={i}>{l}</div>)}
-              {cameraError && <div className="text-red-500 font-bold bg-black/50 p-1">{cameraError}</div>}
-            </div>
-
-            {floatingTexts.map(ft => (
-              <div key={ft.id} className="absolute font-val font-bold text-6xl pointer-events-none"
-                   style={{ 
-                     left: ft.x, top: ft.y, 
-                     color: ft.type === 'hit' ? '#ff4655' : '#fff',
-                     textShadow: ft.type === 'hit' ? '0 0 20px #ff4655' : '0 0 10px #fff',
-                     animation: 'floatUp 0.6s ease-out forwards'
-                   }}>
-                 {ft.text}
-              </div>
-            ))}
-            <style>{`@keyframes floatUp { 0% { opacity: 0; transform: translate(-50%, 0) scale(0.5); } 20% { opacity: 1; transform: translate(-50%, -20px) scale(1.2); } 100% { opacity: 0; transform: translate(-50%, -80px) scale(1); } }`}</style>
-          </div>
-        );
+        setTimeout(() => {
+          popupLayer.appendChild(popup);
+          playSound(burstSound, 0.3);
+          void popup.offsetWidth;  
+          popup.classList.add('burst-in');
+          popup.classList.add('floating'); 
+          activeCards.push(popup); // 100% 稳定添加
+        }, totalDelay); 
+        
+      });
+    }
+    
+    // --- 6. 聚焦/取消聚焦 功能 (V23 400ms 修复) ---
+    
+    // V23 聚焦 (保持稳定)
+    function toggleFocus(card) {
+      
+      // V22 中断逻辑 (保持稳定)
+      if (card.isRecycling) {
+        clearTimeout(card.recycleTimer1);
+        clearTimeout(card.recycleTimer2);
+        card.isRecycling = false;
+        
+        card.style.transition = 'none'; 
+        card.style.opacity = 0.8;
+        card.style.transform = `translate(-50%, -50%) scale(1) rotate(${card.style.getPropertyValue('--final-rotate')})`;
+        void card.offsetWidth; 
       }
 
-      // --- MAIN APP ---
-      const GameState = { MENU: 0, PLAYING: 1, GAME_OVER: 2 };
+      playSound(clickSound, 0.3);  
+      const isAlreadyFocused = card.classList.contains('focused');
+      
+      // V23 400ms 失焦 (保持稳定)
+      removeFocus();
+      
+      if (!isAlreadyFocused) {
+        // V23 400ms 聚焦 (保持稳定)
+        card.style.transition = `all ${FOCUS_ANIM_DURATION/1000}s cubic-bezier(0.68, -0.55, 0.27, 1.55)`;
+        
+        card.classList.add('focused');
+        popupLayer.classList.add('is-focused'); // 100% 添加遮罩
+      }
+    }
+    
+    // V23 失焦 (保持稳定)
+    function removeFocus() {
+      const focusedCard = document.querySelector('.popup-message.focused');
+      if (focusedCard) {
+        
+        // V23 400ms 失焦 (保持稳定)
+        focusedCard.style.transition = `all ${FOCUS_ANIM_DURATION/1000}s cubic-bezier(0.68, -0.55, 0.27, 1.55)`;
+        
+        focusedCard.classList.remove('focused');
+        focusedCard.style.zIndex = ++currentTopZ; // V20 仲裁器
+      }
+      popupLayer.classList.remove('is-focused'); // 100% 移除遮罩
+    }
 
-      function App() {
-        const [gameState, setGameState] = useState(GameState.MENU);
-        const [score, setScore] = useState(0);
+    // --- 7. V20 樱花粒子系统 (保持稳定) ---
+    function createParticles() {
+      if (!particleField) return;
+      
+      const particleCount = 40; 
+      const fragment = document.createDocumentFragment();
+      const colors = ['#FF69B4', '#FF1493', '#FFB6C1']; // V20: 更粉的颜色
 
-        const startGame = () => {
-          generateSound('ui');
-          setScore(0);
-          setGameState(GameState.PLAYING);
-        };
+      for (let i = 0; i < particleCount; i++) {
+        
+        const p = document.createElement('div');
+        p.className = 'particle';
+        p.innerHTML = '🌸';
+        
+        const size = Math.random() * 10 + 10; 
+        const xPos = Math.random() * 100;     
+        
+        const delay = Math.random() * -20;    
+        const fallDuration = Math.random() * 10 + 10; 
+        const driftX = Math.random() * 20 + 10; 
 
-        const endGame = (finalScore) => {
-          setScore(finalScore);
-          setGameState(GameState.GAME_OVER);
-        };
-
-        return (
-          <div className="relative w-full h-full text-white font-val overflow-hidden">
-            <ARGame gameState={gameState} onScoreUpdate={setScore} onGameOver={endGame} />
-            
-            <div id="ui-layer" className="flex flex-col justify-between p-6">
-              <div className="flex justify-between items-start w-full">
-                <div className="flex flex-col">
-                  <h1 className="text-3xl md:text-5xl font-bold tracking-wider text-[#ff4655] drop-shadow-md uppercase">无畏契约</h1>
-                  <span className="text-xl md:text-2xl text-white tracking-widest opacity-80">小琳特供版</span>
-                </div>
-                {gameState === GameState.PLAYING && (
-                  <div className="flex flex-col items-end">
-                    <span className="text-sm text-gray-400 tracking-widest">KILLS</span>
-                    <span className="text-6xl font-bold text-white drop-shadow-[0_0_10px_rgba(255,70,85,0.5)]">{score}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-md text-center pointer-events-auto">
-                {gameState === GameState.MENU && (
-                  <div className="bg-[#0f1923]/90 border border-[#ff4655] p-8 backdrop-blur-md animate-fade-in">
-                    <p className="text-gray-300 mb-6 text-lg">Use your hand as a pistol.<br/><span className="text-[#ff4655]">Index finger</span> to aim.<br/><span className="text-[#ff4655]">Thumb</span> to shoot.</p>
-                    <button onClick={startGame} className="bg-[#ff4655] hover:bg-[#d93442] text-white text-2xl font-bold py-3 px-12 transition-all duration-200 active:scale-95" style={{ clipPath: 'polygon(10% 0, 100% 0, 100% 70%, 90% 100%, 0 100%, 0 30%)' }}>START MISSION</button>
-                  </div>
-                )}
-
-                {gameState === GameState.GAME_OVER && (
-                  <div className="bg-[#0f1923]/90 border border-[#ff4655] p-8 backdrop-blur-md animate-fade-in">
-                    <h2 className="text-5xl font-bold text-white mb-2 uppercase">Mission Over</h2>
-                    <div className="w-full h-px bg-gray-600 my-4"></div>
-                    <div className="flex justify-between items-center mb-8 px-4">
-                      <span className="text-gray-400 text-xl">FINAL SCORE</span>
-                      <span className="text-[#ff4655] text-4xl font-bold">{score}</span>
-                    </div>
-                    <button onClick={startGame} className="bg-white hover:bg-gray-200 text-[#0f1923] text-2xl font-bold py-3 px-12 transition-all duration-200 active:scale-95" style={{ clipPath: 'polygon(10% 0, 100% 0, 100% 70%, 90% 100%, 0 100%, 0 30%)' }}>PLAY AGAIN</button>
-                  </div>
-                )}
-              </div>
-              <div className="text-center text-xs text-gray-500 opacity-50">AR GESTURE SYSTEM ONLINE • V 1.0</div>
-            </div>
-          </div>
-        );
+        p.style.fontSize = `${size}px`;
+        p.style.left = `${xPos}%`;
+        p.style.color = colors[Math.floor(Math.random() * colors.length)];
+        
+        p.style.setProperty('--delay', `${delay}s`);
+        p.style.setProperty('--fall-dur', `${fallDuration}s`);
+        p.style.setProperty('--drift-x', `${driftX}px`);
+        p.style.setProperty('--drift-x-neg', `-${driftX}px`);
+        
+        fragment.appendChild(p);
+      }
+      particleField.appendChild(fragment);
+    }
+    
+    // 立即执行粒子创建
+    createParticles();
+    
+    // --- 8. V24 (Bug 2 修复): 卡片循环 *调度器* ---
+    
+    // V22 启动器 (保持稳定)
+    function launchRecycleWorkers() {
+      if (activeCards.length === 0) {
+        setTimeout(launchRecycleWorkers, 1000); 
+        return;
+      }
+      
+      for (let i = 0; i < MAX_CONCURRENT_RECYCLES; i++) {
+        recycleWorker(i); // 启动 3 个工人
+      }
+    }
+    
+    // V22 工人 (保持稳定)
+    function recycleWorker(id) {
+      
+      // V22 "点击中断" (全局暂停) (保持稳定)
+      if (document.querySelector('.popup-message.focused')) {
+        const sleep = RECYCLE_WORKER_SLEEP_MIN + (Math.random() * (RECYCLE_WORKER_SLEEP_MAX - RECYCLE_WORKER_SLEEP_MIN));
+        setTimeout(() => recycleWorker(id), sleep);
+        return;
       }
 
-      // --- ROOT ---
-      const root = ReactDOM.createRoot(document.getElementById('root'));
-      root.render(<App />);
-    </script>
-  <script type="module" src="/index.tsx"></script>
-</body>
-</html>
+      // V22 "工人池" (保持稳定)
+      let availableCards = activeCards.filter(c => !c.isRecycling && !c.classList.contains('focused'));
+      if (availableCards.length === 0) {
+        const sleep = RECYCLE_WORKER_SLEEP_MIN + (Math.random() * (RECYCLE_WORKER_SLEEP_MAX - RECYCLE_WORKER_SLEEP_MIN));
+        setTimeout(() => recycleWorker(id), sleep);
+        return;
+      }
+
+      const card = availableCards[Math.floor(Math.random() * availableCards.length)];
+      card.isRecycling = true; // 100% 标记为“占用”
+
+      // V22 "执行动画"
+      recycleCard(card);
+
+      // V22 "计划下次" (保持稳定)
+      const sleep = RECYCLE_ANIM_DURATION * 2 + RECYCLE_WORKER_SLEEP_MIN + (Math.random() * (RECYCLE_WORKER_SLEEP_MAX - RECYCLE_WORKER_SLEEP_MIN));
+      setTimeout(() => recycleWorker(id), sleep);
+    }
+    
+    // V24 修复 (Bug 2): *单卡片* 动画
+    function recycleCard(card) {
+      
+      // V23 JS 过渡 (保持稳定)
+      card.style.transition = `opacity ${RECYCLE_ANIM_DURATION/1000}s ease-out, transform ${RECYCLE_ANIM_DURATION/1000}s ease-out`;
+      card.style.opacity = 0;
+      card.style.transform = 'translate(-50%, -50%) scale(0.8) rotate(var(--final-rotate))';
+      
+      // V22 可中断定时器 (保持稳定)
+      card.recycleTimer1 = setTimeout(() => {
+        // V20 Z-Index 仲裁器 (100% 稳定)
+        card.style.zIndex = ++currentTopZ; 
+        
+        /* V24 修复 (Bug 2): 100% 修复“集中在上面”
+         V23 (Buggy): newTop = Math.random() * 40 + 10; (10%-50%)
+         V24 (Fixed): newTop = Math.random() * 80 + 10; (10%-90%)
+        */
+        const newTop = Math.random() * 80 + 10; 
+        const newLeft = Math.random() * 80 + 10;
+        
+        card.style.transition = 'none'; // 100% 先重置
+        card.style.top = `${newTop}%`;
+        card.style.left = `${newLeft}%`;
+        card.style.setProperty('--final-top', `${newTop}%`);
+        card.style.setProperty('--final-left', `${newLeft}%`);
+        
+        void card.offsetWidth;
+        
+        // V23 JS 过渡 (保持稳定)
+        card.style.transition = `opacity ${RECYCLE_ANIM_DURATION/1000}s ease-in, transform ${RECYCLE_ANIM_DURATION/1000}s ease-in`;
+        card.style.opacity = 0.8;
+        card.style.transform = 'translate(-50%, -50%) scale(1) rotate(var(--final-rotate))';
+        
+        // V22 可中断定时器 (保持稳定)
+        card.recycleTimer2 = setTimeout(() => {
+          card.isRecycling = false; // 100% 标记为“空闲”
+        }, RECYCLE_ANIM_DURATION);
+        
+      }, RECYCLE_ANIM_DURATION); 
+    }
+
+  </script>
+  
+</body></html>
